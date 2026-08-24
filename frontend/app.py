@@ -201,12 +201,31 @@ with chat_col:
         st.info("👈 Create a new session to start chatting.")
     else:
         # Display messages
-        for msg in st.session_state.messages:
+        for i, msg in enumerate(st.session_state.messages):
             role = msg["role"]
             content = msg["content"]
 
+            # Fallback artifact detection from content
+            art = msg.get("artifact")
+            clean_display_content = content
+            if not art and role == "assistant" and "<artifact" in content:
+                import re
+                match = re.search(r'<artifact(?:\s+type=[\'"]?(\w+)[\'"]?)?(?:\s+title=[\'"]?([^\'">]*)[\'"]?)?[^>]*>(.*?)(?:</artifact>|$)', content, re.DOTALL | re.IGNORECASE)
+                if match:
+                    art = {
+                        "type": match.group(1) or "markdown",
+                        "title": match.group(2) or "Generated Essay",
+                        "content": match.group(3).strip(),
+                    }
+                    clean_display_content = re.sub(
+                        r'<artifact(?:\s+[^>]*)?>.*?(?:</artifact>|$)',
+                        f'\n\n📄 **Artifact generated:** *{art.get("title", "Untitled")}* (See Artifact Viewer panel)\n',
+                        content,
+                        flags=re.DOTALL | re.IGNORECASE,
+                    )
+
             with st.chat_message(role):
-                st.markdown(content)
+                st.markdown(clean_display_content)
 
                 # Show citations for assistant messages
                 if role == "assistant" and msg.get("cited_sources"):
@@ -223,12 +242,13 @@ with chat_col:
                             )
 
                 # Show artifact button
-                if role == "assistant" and msg.get("artifact"):
+                if role == "assistant" and art:
                     if st.button(
-                        f"📄 View: {msg['artifact'].get('title', 'Artifact')}",
-                        key=f"art_{msg['id']}",
+                        f"📄 Open in Artifact Viewer: {art.get('title', 'Artifact')}",
+                        key=f"art_btn_{msg.get('id', i)}_{i}",
+                        type="primary" if st.session_state.current_artifact == art else "secondary",
                     ):
-                        st.session_state.current_artifact = msg["artifact"]
+                        st.session_state.current_artifact = art
                         st.rerun()
 
         # Chat input
@@ -255,36 +275,18 @@ with chat_col:
 
                 if result:
                     msg_data = result["message"]
-                    st.markdown(msg_data["content"])
-
-                    # Show citations
-                    if msg_data.get("cited_sources"):
-                        with st.expander("📚 Sources"):
-                            for src in msg_data["cited_sources"]:
-                                yt_link = ""
-                                if src.get("youtube_url"):
-                                    yt_link = f" [▶️ Watch]({src['youtube_url']})"
-                                st.markdown(
-                                    f"- **{src['episode_title']}** "
-                                    f"with {src['guest']}"
-                                    f" ({src.get('publish_date', 'N/A')})"
-                                    f"{yt_link}"
-                                )
-
-                    # Handle artifact
-                    if msg_data.get("artifact"):
-                        st.session_state.current_artifact = msg_data["artifact"]
-                        if st.button(
-                            f"📄 View: {msg_data['artifact'].get('title', 'Artifact')}",
-                            key="new_artifact",
-                        ):
-                            st.rerun()
 
                     # Add to local state
                     st.session_state.messages.append(msg_data)
 
                     # Update provider info
                     st.session_state.provider = result.get("provider", st.session_state.provider)
+
+                    # Auto-open artifact panel if artifact is present
+                    if msg_data.get("artifact"):
+                        st.session_state.current_artifact = msg_data["artifact"]
+
+                    st.rerun()
                 else:
                     st.error("Failed to get a response. Please try again.")
 

@@ -259,10 +259,10 @@ class AgentService:
         if artifact:
             import re
             clean_content = re.sub(
-                r'<artifact[^>]*>.*?</artifact>',
-                f'\n\n📄 **Artifact generated:** {artifact.get("title", "Untitled")}\n',
+                r'<artifact(?:\s+[^>]*)?>.*?(?:</artifact>|$)',
+                f'\n\n📄 **Artifact generated:** *{artifact.get("title", "Untitled")}* (See Artifact Viewer panel)\n',
                 result_text,
-                flags=re.DOTALL,
+                flags=re.DOTALL | re.IGNORECASE,
             )
 
         return {
@@ -271,65 +271,32 @@ class AgentService:
             "artifact": artifact,
         }
 
-    async def _execute_tool(self, tool_call: dict, db: AsyncSession) -> str:
-        """Execute a tool call and return the result as a string."""
-        name = tool_call["name"]
-        args = tool_call.get("input", {})
-
-        logger.info(f"Executing tool: {name} with args: {json.dumps(args)[:200]}")
-
-        try:
-            if name == "search_transcripts":
-                query = args.get("query", "")
-                results = await search_transcripts(
-                    query, db, self.embedding_service, self.settings.retrieval_top_k
-                )
-                self._last_search_results = results
-
-                if not results:
-                    return "No relevant transcript chunks found for this query."
-
-                # Return top chunks with concise excerpt to keep prompt compact and stay within API token limits
-                output = "Found the following relevant transcript excerpts:\n\n"
-                for i, chunk in enumerate(results[:3], 1):
-                    content = chunk['content'].strip()
-                    if len(content) > 700:
-                        content = content[:700] + "..."
-                    output += f"### Source {i}: {chunk['episode_title']} (with {chunk['guest']})\n"
-                    output += f"Date: {chunk['publish_date']}\n"
-                    if chunk.get('youtube_url'):
-                        output += f"URL: {chunk['youtube_url']}\n"
-                    if chunk.get('section_timestamp'):
-                        output += f"Timestamp: {chunk['section_timestamp']}\n"
-                    output += f"\n{content}\n\n---\n\n"
-                return output
-
-            elif name == "generate_ship30_essay":
-                topic = args.get("topic", "")
-                grounded_content = args.get("grounded_content", "")
-                sources = args.get("sources", [])
-                return build_essay_prompt(topic, grounded_content, sources)
-
-            else:
-                return f"Unknown tool: {name}"
-
-        except Exception as e:
-            logger.error(f"Tool execution error ({name}): {e}")
-            return f"Tool error: {str(e)}"
-
     def _extract_artifact(self, text: str) -> dict | None:
         """Extract artifact from response text if present."""
         import re
 
-        # Match <artifact type="..." title="...">content</artifact>
-        pattern = r'<artifact\s+type="(\w+)"\s+title="([^"]*)">(.*?)</artifact>'
-        match = re.search(pattern, text, re.DOTALL)
+        # Match <artifact type="..." title="...">content</artifact> (flexible attributes, optional closing)
+        pattern = r'<artifact(?:\s+type=[\'"]?(\w+)[\'"]?)?(?:\s+title=[\'"]?([^\'">]*)[\'"]?)?[^>]*>(.*?)(?:</artifact>|$)'
+        match = re.search(pattern, text, re.DOTALL | re.IGNORECASE)
 
         if match:
+            art_type = match.group(1) or "markdown"
+            title = match.group(2) or "Generated Artifact"
+            content = match.group(3).strip()
+            if content:
+                return {
+                    "type": art_type.lower(),
+                    "title": title.strip() or "Generated Artifact",
+                    "content": content,
+                }
+
+        # Fallback: Detect standalone markdown essays or HTML codeblocks
+        html_block = re.search(r'```html\s*(<!DOCTYPE html.*?|.*?<html.*?)```', text, re.DOTALL | re.IGNORECASE)
+        if html_block:
             return {
-                "type": match.group(1),
-                "title": match.group(2),
-                "content": match.group(3).strip(),
+                "type": "html",
+                "title": "HTML Preview",
+                "content": html_block.group(1).strip(),
             }
 
         return None
