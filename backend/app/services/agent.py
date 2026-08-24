@@ -90,6 +90,7 @@ class AgentService:
             cited_sources: list[dict] — source citations
             artifact: dict|None — {type, content, title} if an artifact was generated
         """
+        self._last_search_results = []
         # Try claude-agent-sdk first for anthropic, otherwise use standard tool-use loop
         if self.settings.llm_provider == "anthropic":
             try:
@@ -263,36 +264,7 @@ class AgentService:
             # Max iterations reached
             result_text = response.content or "I was unable to complete the analysis within the allowed steps."
 
-        # Build cited sources from last search results
-        for chunk in self._last_search_results:
-            cited_sources.append({
-                "episode_title": chunk["episode_title"],
-                "guest": chunk["guest"],
-                "publish_date": chunk.get("publish_date"),
-                "youtube_url": chunk.get("youtube_url"),
-                "section_timestamp": chunk.get("section_timestamp"),
-                "content_preview": chunk["content"][:200],
-            })
-
-        # Clean any <think> reasoning tokens from model output
-        cleaned_text = self._clean_model_text(result_text)
-
-        # Extract artifact from response
-        artifact = self._extract_artifact(cleaned_text)
-
-        # Clean artifact markers from the main content if artifact was extracted
-        clean_content = cleaned_text
-        if artifact:
-            clean_content = (
-                f"📄 **{artifact.get('title', 'Ship 30 for 30 Essay')}** has been generated! "
-                f"It is now rendered in the **Artifact Viewer** on the right ➡️"
-            )
-
-        return {
-            "content": clean_content.strip(),
-            "cited_sources": cited_sources,
-            "artifact": artifact,
-        }
+        return self._build_response(result_text)
 
     def _clean_model_text(self, text: str) -> str:
         """Strip <think>...</think> reasoning blocks and raw tool_call tags from model output."""
@@ -386,7 +358,7 @@ class AgentService:
                         title = "Ship 30 for 30 Essay"
 
                 content = match.group(3).strip()
-                if content:
+                if content and len(content) > 30:
                     return {
                         "type": art_type.lower(),
                         "title": title.strip(),

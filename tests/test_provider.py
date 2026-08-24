@@ -102,3 +102,37 @@ class TestSearchTool:
         assert tool_def["name"] == "search_transcripts"
         assert "input_schema" in tool_def
         assert "query" in tool_def["input_schema"]["properties"]
+
+
+class TestAgentResponseBuilding:
+    """Test response building and citation extraction in AgentService."""
+
+    def test_build_response_with_sources(self):
+        from backend.app.services.agent import AgentService
+        from unittest.mock import MagicMock
+
+        settings = MagicMock()
+        settings.llm_provider = "ollama"
+        settings.ollama_base_url = "http://localhost:11434"
+        settings.ollama_chat_model = "llama3.1:8b"
+        settings.ollama_embed_model = "nomic-embed-text"
+
+        agent = AgentService(settings)
+        agent._last_search_results = [
+            {
+                "episode_title": "Brian Chesky on Product",
+                "guest": "Brian Chesky",
+                "publish_date": "2023-11-01",
+                "youtube_url": "https://youtube.com/watch?v=123",
+                "section_timestamp": "05:20",
+                "content": "A founder-led company stays close to the details.",
+            }
+        ]
+
+        resp = agent._build_response("Brian Chesky focuses on founder-led product management.")
+        assert resp["content"] == "Brian Chesky focuses on founder-led product management."
+        assert len(resp["cited_sources"]) == 1
+        assert resp["cited_sources"][0]["episode_title"] == "Brian Chesky on Product"
+        assert resp["cited_sources"][0]["guest"] == "Brian Chesky"
+        assert resp["artifact"] is None
+

@@ -32,7 +32,7 @@ def api_call(method: str, path: str, **kwargs) -> dict | None:
     """Make an API call to the backend."""
     url = f"{BACKEND_URL}{path}"
     try:
-        resp = getattr(requests, method)(url, timeout=120, **kwargs)
+        resp = getattr(requests, method)(url, timeout=300, **kwargs)
         if resp.status_code >= 400:
             st.error(f"API Error ({resp.status_code}): {resp.text}")
             return None
