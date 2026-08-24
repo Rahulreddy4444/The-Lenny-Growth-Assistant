@@ -37,8 +37,9 @@ Rules:
 1. Search transcripts with `search_transcripts` before answering product/growth questions.
 2. Ground claims in retrieved transcripts. Cite sources inline: *(Source: "[Episode Title]" with [Guest])*.
 3. If not covered, state clearly: "I couldn't find information about this topic in Lenny's Podcast transcripts."
-4. When asked for an essay or Ship 30, use `generate_ship30_essay` and wrap in `<artifact type="markdown" title="...">...</artifact>`.
-5. Keep answers concise, actionable, and formatted in Markdown."""
+4. When asked to write a Ship 30 essay or create an artifact, write it directly inside `<artifact type="markdown" title="Your Title">...</artifact>`. Follow the Ship 30 format: clear hook headline, 1/3/1 rhythm intro, 3-5 bold subheadings with bullet points, and 1 specific actionable takeaway.
+5. For HTML requests, wrap the code inside `<artifact type="html" title="Your Title">...</artifact>`.
+6. Keep answers concise, actionable, and formatted in Markdown."""
 
 
 # ── Tool definitions ──────────────────────────────────────────────────────────
@@ -170,7 +171,7 @@ class AgentService:
 
         Works with both Anthropic SDK (native tool-use) and Ollama (OpenAI-compatible).
         """
-        MAX_TOOL_ITERATIONS = 3
+        MAX_TOOL_ITERATIONS = 4
         cited_sources = []
         artifact = None
 
@@ -178,11 +179,16 @@ class AgentService:
         current_messages = list(messages)
 
         for iteration in range(MAX_TOOL_ITERATIONS):
+            # If essay tool was executed, disable tools on subsequent turn to force essay writing
+            active_tools = self.tools
+            if any(m.get("name") == "generate_ship30_essay" for m in current_messages):
+                active_tools = None
+
             # Call the LLM
             response = await self.provider.chat(
                 messages=current_messages,
                 system_prompt=SYSTEM_PROMPT,
-                tools=self.tools,
+                tools=active_tools,
             )
 
             # If no tool calls, we have the final response
@@ -271,24 +277,80 @@ class AgentService:
             "artifact": artifact,
         }
 
+    async def _execute_tool(self, tool_call: dict, db: AsyncSession) -> str:
+        """Execute a tool call and return the result as a string."""
+        name = tool_call["name"]
+        args = tool_call.get("input", {})
+
+        logger.info(f"Executing tool: {name} with args: {json.dumps(args)[:200]}")
+
+        try:
+            if name == "search_transcripts":
+                query = args.get("query", "")
+                results = await search_transcripts(
+                    query, db, self.embedding_service, self.settings.retrieval_top_k
+                )
+                self._last_search_results = results
+
+                if not results:
+                    return "No relevant transcript chunks found for this query."
+
+                output = "Found the following relevant transcript excerpts:\n\n"
+                for i, chunk in enumerate(results[:3], 1):
+                    content = chunk['content'].strip()
+                    if len(content) > 700:
+                        content = content[:700] + "..."
+                    output += f"### Source {i}: {chunk['episode_title']} (with {chunk['guest']})\n"
+                    output += f"Date: {chunk['publish_date']}\n"
+                    if chunk.get('youtube_url'):
+                        output += f"URL: {chunk['youtube_url']}\n"
+                    if chunk.get('section_timestamp'):
+                        output += f"Timestamp: {chunk['section_timestamp']}\n"
+                    output += f"\n{content}\n\n---\n\n"
+                return output
+
+            elif name == "generate_ship30_essay":
+                topic = args.get("topic", "")
+                grounded_content = args.get("grounded_content", "")
+                sources = args.get("sources", [])
+                return build_essay_prompt(topic, grounded_content, sources)
+
+            else:
+                return f"Unknown tool: {name}"
+
+        except Exception as e:
+            logger.error(f"Tool execution error ({name}): {e}")
+            return f"Tool error: {str(e)}"
+
     def _extract_artifact(self, text: str) -> dict | None:
         """Extract artifact from response text if present."""
         import re
 
-        # Match <artifact type="..." title="...">content</artifact> (flexible attributes, optional closing)
-        pattern = r'<artifact(?:\s+type=[\'"]?(\w+)[\'"]?)?(?:\s+title=[\'"]?([^\'">]*)[\'"]?)?[^>]*>(.*?)(?:</artifact>|$)'
-        match = re.search(pattern, text, re.DOTALL | re.IGNORECASE)
+        if "<artifact" in text.lower():
+            # First try standard closed tag
+            match = re.search(
+                r'<artifact(?:\s+type=[\'"]?(\w+)[\'"]?)?(?:\s+title=[\'"]?([^\'">]*)[\'"]?)?[^>]*>(.*?)</artifact>',
+                text,
+                re.DOTALL | re.IGNORECASE,
+            )
+            if not match:
+                # Try unclosed tag capturing until end of text
+                match = re.search(
+                    r'<artifact(?:\s+type=[\'"]?(\w+)[\'"]?)?(?:\s+title=[\'"]?([^\'">]*)[\'"]?)?[^>]*>(.*)$',
+                    text,
+                    re.DOTALL | re.IGNORECASE,
+                )
 
-        if match:
-            art_type = match.group(1) or "markdown"
-            title = match.group(2) or "Generated Artifact"
-            content = match.group(3).strip()
-            if content:
-                return {
-                    "type": art_type.lower(),
-                    "title": title.strip() or "Generated Artifact",
-                    "content": content,
-                }
+            if match:
+                art_type = match.group(1) or "markdown"
+                title = match.group(2) or "Generated Essay"
+                content = match.group(3).strip()
+                if content:
+                    return {
+                        "type": art_type.lower(),
+                        "title": title.strip() or "Generated Essay",
+                        "content": content,
+                    }
 
         # Fallback: Detect standalone markdown essays or HTML codeblocks
         html_block = re.search(r'```html\s*(<!DOCTYPE html.*?|.*?<html.*?)```', text, re.DOTALL | re.IGNORECASE)

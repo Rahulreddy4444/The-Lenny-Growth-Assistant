@@ -252,6 +252,8 @@ class GroqProvider(LLMProvider):
         payload = {
             "model": self.model,
             "messages": all_messages,
+            "max_tokens": 1500,
+            "temperature": 0.5,
         }
 
         # Format tools for OpenAI/Groq compatible endpoint
@@ -276,7 +278,7 @@ class GroqProvider(LLMProvider):
 
         import asyncio
 
-        max_retries = 3
+        max_retries = 6
         data = None
 
         for attempt in range(max_retries):
@@ -289,14 +291,14 @@ class GroqProvider(LLMProvider):
                     )
                     if resp.status_code == 429:
                         # Rate limit reached — wait and retry
-                        retry_after = 3.0 * (attempt + 1)
+                        retry_after = 4.0 * (attempt + 1)
                         try:
                             err_json = resp.json()
                             msg = err_json.get("error", {}).get("message", "")
                             import re
                             match = re.search(r"try again in (\d+\.?\d*)s", msg)
                             if match:
-                                retry_after = min(float(match.group(1)) + 0.5, 10.0)
+                                retry_after = float(match.group(1)) + 1.0
                         except Exception:
                             pass
                         logger.warning(f"Groq 429 Rate Limit (attempt {attempt+1}/{max_retries}). Retrying in {retry_after:.1f}s...")
@@ -312,7 +314,7 @@ class GroqProvider(LLMProvider):
                 if attempt == max_retries - 1:
                     logger.error(f"Groq API error after {max_retries} attempts: {e}")
                     raise
-                await asyncio.sleep(2.0)
+                await asyncio.sleep(3.0)
 
         if not data:
             raise RuntimeError("Failed to get response from Groq API after retries.")
