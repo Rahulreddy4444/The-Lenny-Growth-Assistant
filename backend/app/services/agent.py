@@ -174,14 +174,12 @@ class AgentService:
         cited_sources = []
         artifact = None
 
-        # Start the conversation
         current_messages = list(messages)
+        search_count = 0
 
         for iteration in range(MAX_TOOL_ITERATIONS):
-            # If essay tool was executed, disable tools on subsequent turn to force essay writing
-            active_tools = self.tools
-            if any(m.get("name") == "generate_ship30_essay" for m in current_messages):
-                active_tools = None
+            # Limit transcript search to 1 execution per turn so the model synthesizes immediately
+            active_tools = self.tools if search_count < 1 else None
 
             # Call the LLM
             response = await self.provider.chat(
@@ -194,6 +192,11 @@ class AgentService:
             if not response.tool_calls:
                 result_text = response.content
                 break
+
+            # Count searches
+            for tc in response.tool_calls:
+                if tc.get("name") == "search_transcripts":
+                    search_count += 1
 
             # Process tool calls
             if self.settings.llm_provider == "anthropic":
@@ -277,13 +280,15 @@ class AgentService:
         }
 
     def _clean_model_text(self, text: str) -> str:
-        """Strip <think>...</think> reasoning blocks from model output."""
+        """Strip <think>...</think> reasoning blocks and raw tool_call tags from model output."""
         import re
         # Strip closed <think>...</think>
         cleaned = re.sub(r'<think>.*?</think>', '', text, flags=re.DOTALL | re.IGNORECASE)
         # Strip unclosed <think> at the start if any
         if cleaned.strip().startswith('<think>'):
             cleaned = re.sub(r'<think>.*?(?=\n\n|\n[#A-Z<]|$)', '', cleaned, flags=re.DOTALL | re.IGNORECASE)
+        # Strip raw <tool_call> tags if printed as plain text
+        cleaned = re.sub(r'<tool_call>.*?</tool_call>', '', cleaned, flags=re.DOTALL | re.IGNORECASE)
         return cleaned.strip()
 
     async def _execute_tool(self, tool_call: dict, db: AsyncSession) -> str:
@@ -302,20 +307,22 @@ class AgentService:
                 self._last_search_results = results
 
                 if not results:
-                    return "No relevant transcript chunks found for this query."
+                    return "No relevant transcript chunks found for this query. State that this topic is not covered in Lenny's Podcast transcripts."
 
-                output = "Found the following relevant transcript excerpts:\n\n"
+                output = "Found the following relevant transcript excerpts from Lenny's Podcast:\n\n"
                 for i, chunk in enumerate(results[:3], 1):
                     content = chunk['content'].strip()
                     if len(content) > 700:
                         content = content[:700] + "..."
-                    output += f"### Source {i}: {chunk['episode_title']} (with {chunk['guest']})\n"
+                    output += f"### Source {i}: \"{chunk['episode_title']}\" (with {chunk['guest']})\n"
                     output += f"Date: {chunk['publish_date']}\n"
                     if chunk.get('youtube_url'):
                         output += f"URL: {chunk['youtube_url']}\n"
                     if chunk.get('section_timestamp'):
                         output += f"Timestamp: {chunk['section_timestamp']}\n"
                     output += f"\n{content}\n\n---\n\n"
+
+                output += "\nInstructions: Answer the user's question directly and thoroughly using the transcript excerpts above. Cite your sources inline using: *(Source: \"[Episode Title]\" with [Guest])*. Do not call any further tools."
                 return output
 
             elif name == "generate_ship30_essay":
