@@ -227,6 +227,136 @@ class OllamaProvider(LLMProvider):
         return data["embeddings"]
 
 
+class GroqProvider(LLMProvider):
+    """Groq provider using OpenAI-compatible API for fast inference."""
+
+    def __init__(self, api_key: str, model: str = "llama3-70b-8192"):
+        self.api_key = api_key
+        self.model = model
+        self.base_url = "https://api.groq.com/openai/v1"
+        logger.info(f"Groq provider initialized with model: {model}")
+
+    async def chat(
+        self,
+        messages: list[dict],
+        system_prompt: str = "",
+        tools: list[dict] = None,
+        tool_results: list[dict] = None,
+    ) -> LLMResponse:
+        """Send chat request to Groq API."""
+        all_messages = []
+        if system_prompt:
+            all_messages.append({"role": "system", "content": system_prompt})
+        all_messages.extend(messages)
+
+        payload = {
+            "model": self.model,
+            "messages": all_messages,
+        }
+
+        # Format tools for OpenAI/Groq compatible endpoint
+        if tools:
+            groq_tools = []
+            for tool in tools:
+                groq_tools.append({
+                    "type": "function",
+                    "function": {
+                        "name": tool["name"],
+                        "description": tool.get("description", ""),
+                        "parameters": tool.get("input_schema", {}),
+                    },
+                })
+            payload["tools"] = groq_tools
+            payload["tool_choice"] = "auto"
+
+        headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json"
+        }
+
+        import asyncio
+
+        max_retries = 3
+        data = None
+
+        for attempt in range(max_retries):
+            try:
+                async with httpx.AsyncClient(timeout=120) as client:
+                    resp = await client.post(
+                        f"{self.base_url}/chat/completions",
+                        json=payload,
+                        headers=headers
+                    )
+                    if resp.status_code == 429:
+                        # Rate limit reached — wait and retry
+                        retry_after = 3.0 * (attempt + 1)
+                        try:
+                            err_json = resp.json()
+                            msg = err_json.get("error", {}).get("message", "")
+                            import re
+                            match = re.search(r"try again in (\d+\.?\d*)s", msg)
+                            if match:
+                                retry_after = min(float(match.group(1)) + 0.5, 10.0)
+                        except Exception:
+                            pass
+                        logger.warning(f"Groq 429 Rate Limit (attempt {attempt+1}/{max_retries}). Retrying in {retry_after:.1f}s...")
+                        await asyncio.sleep(retry_after)
+                        continue
+
+                    if resp.status_code >= 400:
+                        logger.error(f"Groq API error ({resp.status_code}): {resp.text}")
+                    resp.raise_for_status()
+                    data = resp.json()
+                    break
+            except Exception as e:
+                if attempt == max_retries - 1:
+                    logger.error(f"Groq API error after {max_retries} attempts: {e}")
+                    raise
+                await asyncio.sleep(2.0)
+
+        if not data:
+            raise RuntimeError("Failed to get response from Groq API after retries.")
+
+        message = data.get("choices", [{}])[0].get("message", {})
+        content = message.get("content", "")
+        tool_calls = []
+
+        if message.get("tool_calls"):
+            for tc in message["tool_calls"]:
+                fn = tc.get("function", {})
+                
+                # Parse arguments if it's a JSON string
+                arguments = fn.get("arguments", "{}")
+                if isinstance(arguments, str):
+                    import json
+                    try:
+                        arguments = json.loads(arguments)
+                    except json.JSONDecodeError:
+                        arguments = {}
+
+                tool_calls.append({
+                    "id": tc.get("id", ""),
+                    "name": fn.get("name", ""),
+                    "input": arguments,
+                })
+
+        stop_reason = data.get("choices", [{}])[0].get("finish_reason", "end_turn")
+        
+        return LLMResponse(
+            content=content or "",
+            tool_calls=tool_calls,
+            stop_reason=stop_reason,
+            raw=data,
+        )
+
+    async def embed(self, text: str | list[str]) -> list[list[float]]:
+        """Groq does not natively provide embeddings in the same way, delegate to Ollama."""
+        raise NotImplementedError(
+            "Groq does not provide embeddings in this setup. "
+            "Use Ollama for embeddings regardless of chat provider."
+        )
+
+
 class EmbeddingService:
     """Standalone embedding service — always uses Ollama regardless of chat provider."""
 
@@ -253,6 +383,15 @@ def get_chat_provider(settings) -> LLMProvider:
             base_url=settings.ollama_base_url,
             chat_model=settings.ollama_chat_model,
             embed_model=settings.ollama_embed_model,
+        )
+    elif settings.llm_provider == "groq":
+        if not settings.groq_api_key:
+            raise ValueError(
+                "GROQ_API_KEY is required when LLM_PROVIDER=groq"
+            )
+        return GroqProvider(
+            api_key=settings.groq_api_key,
+            model=settings.groq_model,
         )
     else:
         raise ValueError(f"Unknown LLM provider: {settings.llm_provider}")

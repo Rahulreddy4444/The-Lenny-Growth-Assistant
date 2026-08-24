@@ -32,35 +32,13 @@ logger = logging.getLogger(__name__)
 
 # ── System prompt enforcing grounding ──────────────────────────────────────────
 
-SYSTEM_PROMPT = """You are The Lenny Growth Assistant — an AI that answers product and growth questions grounded STRICTLY in Lenny's Podcast transcripts.
-
-## Core Rules
-
-1. **ALWAYS search transcripts first.** Before answering any product/growth question, you MUST call the `search_transcripts` tool to retrieve relevant content.
-
-2. **Ground every claim.** Every factual statement in your answer must be supported by content from the retrieved transcript chunks. Cite your sources inline using the format: *(Source: "[Episode Title]" with [Guest])*.
-
-3. **Be honest about gaps.** If the retrieved transcript chunks do not contain information relevant to the user's question, you MUST explicitly say: "I couldn't find information about this topic in Lenny's Podcast transcripts. This question isn't covered in the episodes I have access to." Do NOT make up or infer information that isn't in the transcripts.
-
-4. **Conversation context.** Use the conversation history to maintain context across turns. If the user refers to something discussed earlier, reference it appropriately.
-
-5. **Essay generation.** When the user asks you to "turn this into an essay", "write a Ship 30 essay", or similar, call the `generate_ship30_essay` tool with the grounded content from your previous answer.
-
-6. **Artifact handling.** When generating an essay or long-form content, format it as a Markdown artifact that can be rendered in the artifact viewer. Wrap it in artifact markers:
-   ```
-   <artifact type="markdown" title="Your Title Here">
-   ... markdown content ...
-   </artifact>
-   ```
-
-7. **Stay in scope.** You are an expert on product management, growth, startups, leadership, and related topics AS DISCUSSED on Lenny's Podcast. For completely unrelated questions (e.g., cooking, sports), politely redirect.
-
-## Response Format
-- Use clear, concise language
-- Use Markdown formatting (headers, bold, bullets) for readability
-- Always cite sources with episode title and guest name
-- Keep responses focused and actionable
-"""
+SYSTEM_PROMPT = """You are The Lenny Growth Assistant — answering product and growth questions grounded STRICTLY in Lenny's Podcast transcripts.
+Rules:
+1. Search transcripts with `search_transcripts` before answering product/growth questions.
+2. Ground claims in retrieved transcripts. Cite sources inline: *(Source: "[Episode Title]" with [Guest])*.
+3. If not covered, state clearly: "I couldn't find information about this topic in Lenny's Podcast transcripts."
+4. When asked for an essay or Ship 30, use `generate_ship30_essay` and wrap in `<artifact type="markdown" title="...">...</artifact>`.
+5. Keep answers concise, actionable, and formatted in Markdown."""
 
 
 # ── Tool definitions ──────────────────────────────────────────────────────────
@@ -112,14 +90,17 @@ class AgentService:
             cited_sources: list[dict] — source citations
             artifact: dict|None — {type, content, title} if an artifact was generated
         """
-        # Try claude-agent-sdk first, fall back to standard tool-use loop
-        try:
-            return await self._run_with_agent_sdk(messages, db)
-        except ImportError as e:
-            logger.warning(f"claude-agent-sdk not available: {e}. Falling back to standard tool-use loop.")
-            return await self._run_standard_tool_loop(messages, db)
-        except Exception as e:
-            logger.warning(f"claude-agent-sdk failed: {e}. Falling back to standard tool-use loop.")
+        # Try claude-agent-sdk first for anthropic, otherwise use standard tool-use loop
+        if self.settings.llm_provider == "anthropic":
+            try:
+                return await self._run_with_agent_sdk(messages, db)
+            except ImportError as e:
+                logger.warning(f"claude-agent-sdk not available: {e}. Falling back to standard tool-use loop.")
+                return await self._run_standard_tool_loop(messages, db)
+            except Exception as e:
+                logger.warning(f"claude-agent-sdk failed: {e}. Falling back to standard tool-use loop.")
+                return await self._run_standard_tool_loop(messages, db)
+        else:
             return await self._run_standard_tool_loop(messages, db)
 
     async def _run_with_agent_sdk(self, messages: list[dict], db: AsyncSession) -> dict:
@@ -141,12 +122,15 @@ class AgentService:
                 return "No relevant transcript chunks found for this query."
 
             output = "Found the following relevant transcript excerpts:\n\n"
-            for i, chunk in enumerate(results, 1):
+            for i, chunk in enumerate(results[:4], 1):
+                content = chunk['content'].strip()
+                if len(content) > 1200:
+                    content = content[:1200] + "..."
                 output += f"### Source {i}: {chunk['episode_title']} (with {chunk['guest']})\n"
                 output += f"Date: {chunk['publish_date']} | "
                 if chunk.get('youtube_url'):
                     output += f"URL: {chunk['youtube_url']}\n"
-                output += f"\n{chunk['content']}\n\n---\n\n"
+                output += f"\n{content}\n\n---\n\n"
             return output
 
         @tool
@@ -186,7 +170,7 @@ class AgentService:
 
         Works with both Anthropic SDK (native tool-use) and Ollama (OpenAI-compatible).
         """
-        MAX_TOOL_ITERATIONS = 5
+        MAX_TOOL_ITERATIONS = 3
         cited_sources = []
         artifact = None
 
@@ -207,25 +191,14 @@ class AgentService:
                 break
 
             # Process tool calls
-            # For Anthropic: append assistant message with tool_use blocks, then tool_result
             if self.settings.llm_provider == "anthropic":
-                # Append the full assistant response (text + tool_use blocks)
+                # Anthropic tool format
                 current_messages.append({
                     "role": "assistant",
                     "content": response.raw.content if response.raw else [{"type": "text", "text": response.content}],
                 })
-            else:
-                # For Ollama: append assistant message
-                current_messages.append({
-                    "role": "assistant",
-                    "content": response.content or "",
-                })
-
-            for tc in response.tool_calls:
-                tool_result = await self._execute_tool(tc, db)
-
-                if self.settings.llm_provider == "anthropic":
-                    # Anthropic tool_result format
+                for tc in response.tool_calls:
+                    tool_result = await self._execute_tool(tc, db)
                     current_messages.append({
                         "role": "user",
                         "content": [
@@ -236,11 +209,32 @@ class AgentService:
                             }
                         ],
                     })
-                else:
-                    # Ollama/OpenAI format
+            else:
+                # OpenAI / Groq / Ollama tool format
+                current_messages.append({
+                    "role": "assistant",
+                    "content": response.content or None,
+                    "tool_calls": [
+                        {
+                            "id": tc.get("id") or f"call_{i}",
+                            "type": "function",
+                            "function": {
+                                "name": tc["name"],
+                                "arguments": json.dumps(tc["input"]) if isinstance(tc.get("input"), dict) else str(tc.get("input", "{}")),
+                            },
+                        }
+                        for i, tc in enumerate(response.tool_calls)
+                    ],
+                })
+
+                for i, tc in enumerate(response.tool_calls):
+                    call_id = tc.get("id") or f"call_{i}"
+                    tool_result = await self._execute_tool(tc, db)
                     current_messages.append({
                         "role": "tool",
-                        "content": tool_result,
+                        "tool_call_id": call_id,
+                        "name": tc["name"],
+                        "content": str(tool_result),
                     })
         else:
             # Max iterations reached
@@ -295,15 +289,19 @@ class AgentService:
                 if not results:
                     return "No relevant transcript chunks found for this query."
 
+                # Return top chunks with concise excerpt to keep prompt compact and stay within API token limits
                 output = "Found the following relevant transcript excerpts:\n\n"
-                for i, chunk in enumerate(results, 1):
+                for i, chunk in enumerate(results[:3], 1):
+                    content = chunk['content'].strip()
+                    if len(content) > 700:
+                        content = content[:700] + "..."
                     output += f"### Source {i}: {chunk['episode_title']} (with {chunk['guest']})\n"
                     output += f"Date: {chunk['publish_date']}\n"
                     if chunk.get('youtube_url'):
                         output += f"URL: {chunk['youtube_url']}\n"
                     if chunk.get('section_timestamp'):
                         output += f"Timestamp: {chunk['section_timestamp']}\n"
-                    output += f"\n{chunk['content']}\n\n---\n\n"
+                    output += f"\n{content}\n\n---\n\n"
                 return output
 
             elif name == "generate_ship30_essay":

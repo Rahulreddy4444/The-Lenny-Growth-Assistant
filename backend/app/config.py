@@ -13,11 +13,15 @@ class Settings(BaseSettings):
     """Application settings loaded from environment variables."""
 
     # LLM Provider
-    llm_provider: str = "ollama"  # "anthropic" or "ollama"
+    llm_provider: str = "ollama"  # "anthropic", "ollama", or "groq"
 
     # Anthropic
     anthropic_api_key: Optional[str] = None
     anthropic_model: str = "claude-sonnet-4-20250514"
+
+    # Groq
+    groq_api_key: Optional[str] = None
+    groq_model: str = "llama3-70b-8192"
 
     # Ollama
     ollama_base_url: str = "http://localhost:11434"

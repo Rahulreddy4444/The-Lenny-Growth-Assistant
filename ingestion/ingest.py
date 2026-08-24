@@ -20,6 +20,9 @@ from pathlib import Path
 import psycopg2
 from psycopg2.extras import execute_values
 import requests
+from dotenv import load_dotenv
+
+load_dotenv()
 
 # Add project root to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
