@@ -301,13 +301,29 @@ if artifact_col and st.session_state.current_artifact:
 
         st.markdown(f"### 📄 {artifact.get('title', 'Artifact')}")
 
-        # Close button
-        if st.button("✖ Close Artifact"):
-            st.session_state.current_artifact = None
-            st.rerun()
-
         art_type = artifact.get("type", "markdown")
         art_content = artifact.get("content", "")
+
+        # Action toolbar: Download and Close buttons (Claude Artifacts style)
+        col_dl, col_close = st.columns([1, 1])
+        with col_dl:
+            ext = ".html" if art_type == "html" else ".md"
+            mime = "text/html" if art_type == "html" else "text/markdown"
+            safe_title = "".join(c for c in artifact.get("title", "artifact") if c.isalnum() or c in (" ", "_", "-")).strip().replace(" ", "_")
+            st.download_button(
+                label=f"⬇️ Download {ext}",
+                data=art_content,
+                file_name=f"{safe_title}{ext}",
+                mime=mime,
+                use_container_width=True,
+                type="primary",
+            )
+        with col_close:
+            if st.button("✖ Close", use_container_width=True):
+                st.session_state.current_artifact = None
+                st.rerun()
+
+        st.markdown("---")
 
         if art_type == "markdown":
             st.markdown(art_content)
