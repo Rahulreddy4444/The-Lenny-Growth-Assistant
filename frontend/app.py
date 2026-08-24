@@ -205,11 +205,16 @@ with chat_col:
             role = msg["role"]
             content = msg["content"]
 
+            # Strip any <think> tags from historical or streaming output
+            import re
+            clean_display_content = re.sub(r'<think>.*?</think>', '', content, flags=re.DOTALL | re.IGNORECASE)
+            if clean_display_content.strip().startswith('<think>'):
+                clean_display_content = re.sub(r'<think>.*?(?=\n\n|\n[#A-Z<]|$)', '', clean_display_content, flags=re.DOTALL | re.IGNORECASE)
+            clean_display_content = clean_display_content.strip()
+
             # Fallback artifact detection from content
             art = msg.get("artifact")
-            clean_display_content = content
             if not art and role == "assistant" and "<artifact" in content:
-                import re
                 match = re.search(r'<artifact(?:\s+type=[\'"]?(\w+)[\'"]?)?(?:\s+title=[\'"]?([^\'">]*)[\'"]?)?[^>]*>(.*?)(?:</artifact>|$)', content, re.DOTALL | re.IGNORECASE)
                 if match:
                     art = {
@@ -217,11 +222,9 @@ with chat_col:
                         "title": match.group(2) or "Generated Essay",
                         "content": match.group(3).strip(),
                     }
-                    clean_display_content = re.sub(
-                        r'<artifact(?:\s+[^>]*)?>.*?(?:</artifact>|$)',
-                        f'\n\n📄 **Artifact generated:** *{art.get("title", "Untitled")}* (See Artifact Viewer panel)\n',
-                        content,
-                        flags=re.DOTALL | re.IGNORECASE,
+                    clean_display_content = (
+                        f"📄 **{art.get('title', 'Ship 30 for 30 Essay')}** has been generated! "
+                        f"View the full essay in the **Artifact Viewer** panel on the right ➡️"
                     )
 
             with st.chat_message(role):

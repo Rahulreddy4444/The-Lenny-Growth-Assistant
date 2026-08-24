@@ -257,18 +257,18 @@ class AgentService:
                 "content_preview": chunk["content"][:200],
             })
 
+        # Clean any <think> reasoning tokens from model output
+        cleaned_text = self._clean_model_text(result_text)
+
         # Extract artifact from response
-        artifact = self._extract_artifact(result_text)
+        artifact = self._extract_artifact(cleaned_text)
 
         # Clean artifact markers from the main content if artifact was extracted
-        clean_content = result_text
+        clean_content = cleaned_text
         if artifact:
-            import re
-            clean_content = re.sub(
-                r'<artifact(?:\s+[^>]*)?>.*?(?:</artifact>|$)',
-                f'\n\n📄 **Artifact generated:** *{artifact.get("title", "Untitled")}* (See Artifact Viewer panel)\n',
-                result_text,
-                flags=re.DOTALL | re.IGNORECASE,
+            clean_content = (
+                f"📄 **{artifact.get('title', 'Ship 30 for 30 Essay')}** has been generated! "
+                f"It is now rendered in the **Artifact Viewer** on the right ➡️"
             )
 
         return {
@@ -276,6 +276,16 @@ class AgentService:
             "cited_sources": cited_sources,
             "artifact": artifact,
         }
+
+    def _clean_model_text(self, text: str) -> str:
+        """Strip <think>...</think> reasoning blocks from model output."""
+        import re
+        # Strip closed <think>...</think>
+        cleaned = re.sub(r'<think>.*?</think>', '', text, flags=re.DOTALL | re.IGNORECASE)
+        # Strip unclosed <think> at the start if any
+        if cleaned.strip().startswith('<think>'):
+            cleaned = re.sub(r'<think>.*?(?=\n\n|\n[#A-Z<]|$)', '', cleaned, flags=re.DOTALL | re.IGNORECASE)
+        return cleaned.strip()
 
     async def _execute_tool(self, tool_call: dict, db: AsyncSession) -> str:
         """Execute a tool call and return the result as a string."""
@@ -325,6 +335,7 @@ class AgentService:
     def _extract_artifact(self, text: str) -> dict | None:
         """Extract artifact from response text if present."""
         import re
+        text = self._clean_model_text(text)
 
         if "<artifact" in text.lower():
             # First try standard closed tag
@@ -344,15 +355,24 @@ class AgentService:
             if match:
                 art_type = match.group(1) or "markdown"
                 title = match.group(2) or "Generated Essay"
+                # Strip placeholder title if the model literally wrote "Your Title"
+                if title.lower() in ["your title", "your title here", "untitled"]:
+                    # Try to extract the first # Header as title
+                    first_header = re.search(r'^#+\s+(.+)$', match.group(3).strip(), re.MULTILINE)
+                    if first_header:
+                        title = first_header.group(1).strip()
+                    else:
+                        title = "Ship 30 for 30 Essay"
+
                 content = match.group(3).strip()
                 if content:
                     return {
                         "type": art_type.lower(),
-                        "title": title.strip() or "Generated Essay",
+                        "title": title.strip(),
                         "content": content,
                     }
 
-        # Fallback: Detect standalone markdown essays or HTML codeblocks
+        # Fallback: Detect standalone markdown essays (starting with # Header) or HTML codeblocks
         html_block = re.search(r'```html\s*(<!DOCTYPE html.*?|.*?<html.*?)```', text, re.DOTALL | re.IGNORECASE)
         if html_block:
             return {
@@ -365,7 +385,8 @@ class AgentService:
 
     def _build_response(self, text: str) -> dict:
         """Build a standard response dict from text output."""
-        artifact = self._extract_artifact(text)
+        cleaned_text = self._clean_model_text(text)
+        artifact = self._extract_artifact(cleaned_text)
         cited_sources = []
         for chunk in self._last_search_results:
             cited_sources.append({
@@ -377,14 +398,11 @@ class AgentService:
                 "content_preview": chunk["content"][:200],
             })
 
-        clean_content = text
+        clean_content = cleaned_text
         if artifact:
-            import re
-            clean_content = re.sub(
-                r'<artifact[^>]*>.*?</artifact>',
-                f'\n\n📄 **Artifact generated:** {artifact.get("title", "Untitled")}\n',
-                text,
-                flags=re.DOTALL,
+            clean_content = (
+                f"📄 **{artifact.get('title', 'Ship 30 for 30 Essay')}** has been generated! "
+                f"It is now rendered in the **Artifact Viewer** on the right ➡️"
             )
 
         return {
