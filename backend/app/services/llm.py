@@ -7,6 +7,7 @@ with no branching in business logic.
 ADR-006: Provider Swap Architecture
 """
 
+import asyncio
 import logging
 from abc import ABC, abstractmethod
 from typing import Any, Optional
@@ -252,7 +253,7 @@ class GroqProvider(LLMProvider):
         payload = {
             "model": self.model,
             "messages": all_messages,
-            "max_tokens": 3500,
+            "max_tokens": 1500,
             "temperature": 0.3,
         }
 
@@ -276,9 +277,7 @@ class GroqProvider(LLMProvider):
             "Content-Type": "application/json"
         }
 
-        import asyncio
-
-        max_retries = 6
+        max_retries = 8
         data = None
 
         for attempt in range(max_retries):
@@ -290,17 +289,31 @@ class GroqProvider(LLMProvider):
                         headers=headers
                     )
                     if resp.status_code == 429:
-                        # Rate limit reached — wait and retry
-                        retry_after = 4.0 * (attempt + 1)
-                        try:
-                            err_json = resp.json()
-                            msg = err_json.get("error", {}).get("message", "")
-                            import re
-                            match = re.search(r"try again in (\d+\.?\d*)s", msg)
-                            if match:
-                                retry_after = float(match.group(1)) + 1.0
-                        except Exception:
-                            pass
+                        # Rate limit reached — determine retry delay from headers or body
+                        retry_after = 5.0 * (attempt + 1)
+                        if "retry-after" in resp.headers:
+                            try:
+                                retry_after = float(resp.headers["retry-after"]) + 1.0
+                            except ValueError:
+                                pass
+                        else:
+                            try:
+                                err_json = resp.json()
+                                msg = err_json.get("error", {}).get("message", "")
+                                import re
+                                match = re.search(r"try again in (\d+\.?\d*)s", msg)
+                                if match:
+                                    retry_after = float(match.group(1)) + 1.5
+                            except Exception:
+                                pass
+
+                        # Cap retry wait to max 30 seconds
+                        retry_after = min(retry_after, 30.0)
+
+                        # Reduce max_tokens dynamically to fit under rate limits on retry
+                        if "max_tokens" in payload and payload["max_tokens"] > 600:
+                            payload["max_tokens"] = int(payload["max_tokens"] * 0.75)
+
                         logger.warning(f"Groq 429 Rate Limit (attempt {attempt+1}/{max_retries}). Retrying in {retry_after:.1f}s...")
                         await asyncio.sleep(retry_after)
                         continue
@@ -310,9 +323,14 @@ class GroqProvider(LLMProvider):
                     resp.raise_for_status()
                     data = resp.json()
                     break
+            except httpx.HTTPStatusError as e:
+                if attempt == max_retries - 1:
+                    logger.error(f"Groq API HTTP error after {max_retries} attempts: {e}")
+                    raise
+                await asyncio.sleep(4.0)
             except Exception as e:
                 if attempt == max_retries - 1:
-                    logger.error(f"Groq API error after {max_retries} attempts: {e}")
+                    logger.error(f"Groq API connection error after {max_retries} attempts: {e}")
                     raise
                 await asyncio.sleep(3.0)
 

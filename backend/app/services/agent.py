@@ -171,10 +171,18 @@ class AgentService:
         Works with both Anthropic SDK (native tool-use) and Ollama (OpenAI-compatible).
         """
         MAX_TOOL_ITERATIONS = 4
-        cited_sources = []
-        artifact = None
+        # Prune conversation history to last 4 turns to preserve context while keeping token usage low
+        recent_messages = []
+        for m in messages[-4:]:
+            content = m.get("content", "")
+            if m.get("role") == "assistant" and len(content) > 600:
+                content = content[:600] + "... [context summarized]"
+            recent_messages.append({
+                "role": m.get("role"),
+                "content": content,
+            })
 
-        current_messages = list(messages)
+        current_messages = list(recent_messages)
         search_count = 0
 
         for iteration in range(MAX_TOOL_ITERATIONS):
