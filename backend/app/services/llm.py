@@ -142,9 +142,17 @@ class OllamaProvider(LLMProvider):
             all_messages.append({"role": "system", "content": system_prompt})
         all_messages.extend(messages)
 
+        # Sanitize messages for Ollama API
+        clean_messages = []
+        for m in all_messages:
+            msg_dict = {"role": m["role"], "content": m.get("content") or ""}
+            if m.get("tool_calls"):
+                msg_dict["tool_calls"] = m["tool_calls"]
+            clean_messages.append(msg_dict)
+
         payload = {
             "model": self.chat_model,
-            "messages": all_messages,
+            "messages": clean_messages,
             "stream": False,
         }
 
@@ -164,11 +172,13 @@ class OllamaProvider(LLMProvider):
             payload["tools"] = ollama_tools
 
         try:
-            async with httpx.AsyncClient(timeout=120) as client:
+            async with httpx.AsyncClient(timeout=300) as client:
                 resp = await client.post(
                     f"{self.base_url}/api/chat",
                     json=payload,
                 )
+                if resp.status_code >= 400:
+                    logger.error(f"Ollama API error ({resp.status_code}): {resp.text}")
                 resp.raise_for_status()
                 data = resp.json()
         except httpx.ConnectError:
@@ -185,11 +195,11 @@ class OllamaProvider(LLMProvider):
         tool_calls = []
 
         # Parse tool calls if present
-        if message.get("tool_calls"):
+        if "tool_calls" in message:
             for tc in message["tool_calls"]:
                 fn = tc.get("function", {})
                 tool_calls.append({
-                    "id": fn.get("name", ""),  # Ollama doesn't always provide IDs
+                    "id": tc.get("id", f"call_{len(tool_calls)}"),
                     "name": fn.get("name", ""),
                     "input": fn.get("arguments", {}),
                 })

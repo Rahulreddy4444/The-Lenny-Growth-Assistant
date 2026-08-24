@@ -227,20 +227,27 @@ class AgentService:
                     })
             else:
                 # OpenAI / Groq / Ollama tool format
+                is_ollama = self.settings.llm_provider == "ollama"
+                formatted_tool_calls = []
+                for i, tc in enumerate(response.tool_calls):
+                    inp = tc.get("input", {})
+                    if is_ollama:
+                        args = inp if isinstance(inp, dict) else (json.loads(inp) if inp else {})
+                    else:
+                        args = json.dumps(inp) if isinstance(inp, dict) else str(inp or "{}")
+                    formatted_tool_calls.append({
+                        "id": tc.get("id") or f"call_{i}",
+                        "type": "function",
+                        "function": {
+                            "name": tc["name"],
+                            "arguments": args,
+                        },
+                    })
+
                 current_messages.append({
                     "role": "assistant",
                     "content": response.content or None,
-                    "tool_calls": [
-                        {
-                            "id": tc.get("id") or f"call_{i}",
-                            "type": "function",
-                            "function": {
-                                "name": tc["name"],
-                                "arguments": json.dumps(tc["input"]) if isinstance(tc.get("input"), dict) else str(tc.get("input", "{}")),
-                            },
-                        }
-                        for i, tc in enumerate(response.tool_calls)
-                    ],
+                    "tool_calls": formatted_tool_calls,
                 })
 
                 for i, tc in enumerate(response.tool_calls):
