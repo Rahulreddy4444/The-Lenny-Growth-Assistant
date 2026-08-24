@@ -40,6 +40,7 @@ See [docs/architecture.md](docs/architecture.md) for full architecture documenta
 - [PRD](docs/PRD.md) — Product requirements, scope, risks
 - [Architecture](docs/architecture.md) — System design, ADRs
 - [Design](docs/design.md) — UI layout, UX flows
+- [Requirements](REQUIREMENTS.md) - Traceability Matrix
 
 ## LLM Providers
 
@@ -50,7 +51,22 @@ See [docs/architecture.md](docs/architecture.md) for full architecture documenta
 
 ## Development
 
-_Detailed development instructions to be added._
+To develop locally without Docker:
+
+```bash
+# 1. Create a local virtual environment
+python -m venv .venv
+# Activate on Windows:
+.\.venv\Scripts\Activate.ps1
+# Activate on Mac/Linux:
+source .venv/bin/activate
+
+# 2. Install dependencies
+pip install -r backend/requirements.txt -r frontend/requirements.txt -r ingestion/requirements.txt pytest
+
+# 3. Run the tests
+pytest tests/ -v
+```
 
 ## License
 
