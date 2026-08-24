@@ -1,0 +1,44 @@
+# Environment & secrets
+.env
+.env.local
+.env.production
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg-info/
+dist/
+build/
+eggs/
+*.egg
+.venv/
+venv/
+env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Data directories (cloned transcripts, large files)
+ingestion/data/
+ingestion/lennys-podcast-transcripts/
+
+# Docker
+*.log
+
+# Test artifacts
+.pytest_cache/
+htmlcov/
+.coverage
+
+# Ollama models (if cached locally)
+ollama_data/
