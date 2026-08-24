@@ -39,7 +39,7 @@ Rules:
 3. If not covered, state clearly: "I couldn't find information about this topic in Lenny's Podcast transcripts."
 4. When asked to write a Ship 30 essay or create an artifact, write it directly inside `<artifact type="markdown" title="Your Title">...</artifact>`. Follow the Ship 30 format: clear hook headline, 1/3/1 rhythm intro, 3-5 bold subheadings with bullet points, and 1 specific actionable takeaway.
 5. For HTML requests, wrap the code inside `<artifact type="html" title="Your Title">...</artifact>`.
-6. Keep answers concise, actionable, and formatted in Markdown."""
+6. Write your response directly without adding `<think>` tags."""
 
 
 # ── Tool definitions ──────────────────────────────────────────────────────────
@@ -78,7 +78,6 @@ class AgentService:
         self.embedding_service = get_embedding_service(self.settings)
         self.tools = [
             get_search_tool_definition(),
-            get_essay_tool_definition(),
         ]
         self._last_search_results = []  # Cache for essay generation
 
@@ -372,13 +371,34 @@ class AgentService:
                         "content": content,
                     }
 
-        # Fallback: Detect standalone markdown essays (starting with # Header) or HTML codeblocks
+        # Fallback 1: Detect HTML codeblocks
         html_block = re.search(r'```html\s*(<!DOCTYPE html.*?|.*?<html.*?)```', text, re.DOTALL | re.IGNORECASE)
         if html_block:
             return {
                 "type": "html",
                 "title": "HTML Preview",
                 "content": html_block.group(1).strip(),
+            }
+
+        # Fallback 2: Detect Ship 30 essays or structured long-form documents generated without <artifact> tags
+        if ("subheading" in text.lower() or "takeaway" in text.lower() or "headline:" in text.lower() or "1/3/1" in text.lower()) and len(text) > 300:
+            title = "Ship 30 for 30 Essay"
+            title_m = re.search(r'(?:Headline|Title):\s*([^\n\r]+)', text, re.IGNORECASE)
+            if title_m:
+                title = title_m.group(1).strip()
+            else:
+                header_m = re.search(r'^#+\s+(.+)$', text, re.MULTILINE)
+                if header_m:
+                    title = header_m.group(1).strip()
+
+            # Clean preamble up to the start of the essay
+            start_match = re.search(r'(?:Headline|Title|Intro|#+\s+|Subheading 1|\*\*1\.)', text, re.IGNORECASE)
+            essay_content = text[start_match.start():].strip() if start_match else text.strip()
+
+            return {
+                "type": "markdown",
+                "title": title.strip() or "Ship 30 for 30 Essay",
+                "content": essay_content,
             }
 
         return None

@@ -252,8 +252,8 @@ class GroqProvider(LLMProvider):
         payload = {
             "model": self.model,
             "messages": all_messages,
-            "max_tokens": 1500,
-            "temperature": 0.5,
+            "max_tokens": 3500,
+            "temperature": 0.3,
         }
 
         # Format tools for OpenAI/Groq compatible endpoint
