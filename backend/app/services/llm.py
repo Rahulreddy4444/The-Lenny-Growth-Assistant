@@ -509,12 +509,12 @@ def get_chat_provider(settings) -> LLMProvider:
 
 
 class FastEmbedService:
-    """Fast, local ONNX embedding service — 100% self-contained and pre-baked."""
+    """Fast, local quantized ONNX embedding service — 100% self-contained and pre-baked."""
 
-    def __init__(self, model_name: str = "nomic-ai/nomic-embed-text-v1.5"):
+    def __init__(self, model_name: str = "nomic-ai/nomic-embed-text-v1.5-Q"):
         from fastembed import TextEmbedding
         self.model = TextEmbedding(model_name=model_name, threads=1)
-        logger.info(f"Initialized FastEmbedService for model {model_name} (threads=1)")
+        logger.info(f"Initialized FastEmbedService with quantized model {model_name} (threads=1)")
 
     async def embed(self, text: str | list[str]) -> list[list[float]]:
         if isinstance(text, str):
