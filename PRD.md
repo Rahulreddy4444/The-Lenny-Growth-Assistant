@@ -1,7 +1,5 @@
 # Product Requirements Document — The Lenny Growth Assistant
 
-> Note: Detailed version maintained in [docs/PRD.md](docs/PRD.md).
-
 ## Overview
 
 A conversational web application that answers product and growth questions grounded strictly in Lenny's Podcast transcripts. The assistant can turn any grounded answer into a Ship 30 for 30–style essay and render Markdown/HTML artifacts in an in-app viewer beside the chat.
@@ -23,7 +21,7 @@ A conversational web application that answers product and growth questions groun
 - Cloud LLMs (Anthropic Claude, Groq) supported with API key configuration in `.env`.
 
 ## Scope In & Out
-- **Included**: RAG search with pgvector (cosine similarity), Ship 30 essay generation skill, in-app artifact viewer, session switching, provider swap (Ollama, Anthropic, Groq), health monitoring.
+- **Included**: RAG search with pgvector (cosine similarity), Ship 30 essay generation skill, in-app artifact viewer, multi-turn session switching and deletion, provider swap (Ollama, Anthropic, Groq), health monitoring, and a polished custom UI with Light/Dark mode support.
 - **Excluded**: Multi-tenant authentication, custom model fine-tuning, complex Kubernetes deployments.
 
 ## Risks & Mitigations

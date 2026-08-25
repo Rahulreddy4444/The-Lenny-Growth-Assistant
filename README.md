@@ -62,32 +62,60 @@ python -m ingestion.ingest
 uvicorn backend.app.main:app --reload --host 0.0.0.0 --port 8000
 # Terminal 2:
 streamlit run frontend/app.py
+
+*Note: For hot-reloading within Docker, use `docker-compose up -d --build`. The volumes are configured to sync local changes.*
 ```
 
 ---
 
 ## 🏗️ Architecture & Tech Stack
 
-```
-┌──────────────────┐       ┌─────────────────┐       ┌───────────────────────┐
-│ Streamlit UI     │◄─────►│ FastAPI Backend │◄─────►│ PostgreSQL + pgvector │
-│ (Port 8501)      │       │ (Port 8000)     │       │ (Port 5433 / 5432)    │
-└──────────────────┘       └────────┬────────┘       └───────────────────────┘
-                                    │
-                         ┌──────────┴──────────┐
-                         │ Provider-Swap Layer │
-                         ├─────────────────────┤
-                         │ • Ollama (Local)    │
-                         │ • Anthropic Claude  │
-                         │ • Groq (Cloud)      │
-                         └─────────────────────┘
+```mermaid
+graph TD
+    subgraph "Frontend Layer"
+        UI[💻 Streamlit UI<br/>Port 8501]
+    end
+
+    subgraph "Backend Application"
+        API[⚡ FastAPI Backend<br/>Port 8000]
+        Agent[🧠 Agent Layer<br/>ReAct / Tools]
+    end
+
+    subgraph "Data Persistence"
+        DB[(🗄️ PostgreSQL + pgvector<br/>Port 5432)]
+    end
+
+    subgraph "LLM Provider Swap Layer"
+        Ollama[🐳 Ollama<br/>Local]
+        Groq[☁️ Groq<br/>Cloud]
+        Anthropic[☁️ Anthropic<br/>Cloud]
+    end
+
+    UI <-->|REST API| API
+    API <-->|SQLAlchemy / asyncpg| DB
+    API <-->|Orchestrates| Agent
+    
+    Agent -.->|Dynamically Swapped| Ollama
+    Agent -.->|Dynamically Swapped| Groq
+    Agent -.->|Dynamically Swapped| Anthropic
+
+    classDef core fill:#2563eb,stroke:#1e40af,stroke-width:2px,color:#fff;
+    classDef db fill:#059669,stroke:#047857,stroke-width:2px,color:#fff;
+    classDef llm fill:#7c3aed,stroke:#5b21b6,stroke-width:2px,color:#fff;
+    
+    class UI,API,Agent core;
+    class DB db;
+    class Ollama,Groq,Anthropic llm;
 ```
 
-- **Backend**: FastAPI with async SQLAlchemy 2.0 and Pydantic validation contracts.
-- **Agent Layer**: Claude Agent SDK integration with fallback to standard tool-use loop.
-- **Database**: PostgreSQL with `pgvector` extension and HNSW cosine similarity index.
-- **Frontend**: Streamlit with two-column layout, session persistence, and artifact rendering.
-- **Security**: Server-side HTML sanitization with `nh3` to block XSS and malicious scripts.
+### 🛠️ Core Technologies
+
+- 🐳 **Containerization:** The entire stack is fully containerized using **Docker** and **Docker Compose** for seamless local deployment and component networking.
+- ⚡ **Backend (FastAPI):** High-performance asynchronous Python backend using SQLAlchemy 2.0, asyncpg, and strict Pydantic validation contracts.
+- 🧠 **Agentic Layer (ReAct):** Claude Agent SDK integration with a custom fallback tool-use loop to execute skills (e.g., Ship 30 essay generation) and synthesize context.
+- 🗄️ **Database (PostgreSQL + pgvector):** Vector database utilizing an HNSW cosine similarity index for lightning-fast retrieval of podcast transcript chunks.
+- 🎨 **Frontend (Streamlit):** Reactive two-column UI featuring multi-turn session persistence, custom CSS theming (Dark/Light mode), and interactive side-by-side artifact rendering.
+- 🛡️ **Security:** Server-side HTML sanitization using the Rust-based `nh3` library to neutralize untrusted DOM elements and block XSS attacks.
 
 ---
 
@@ -107,9 +135,9 @@ The application allows seamless switching of the underlying LLM provider in `.en
 
 All deliverables required by the Forward Deployed Engineer specification are provided:
 
-1. [PRD.md](PRD.md) (`docs/PRD.md`) — User discovery brief, success metrics, assumptions, scope, risks.
-2. [architecture.md](architecture.md) (`docs/architecture.md`) — System topology, DB schema, data flows, ADRs.
-3. [design.md](design.md) (`docs/design.md`) — UI/UX principles, layout, interaction states, and accessibility.
+1. [PRD.md](PRD.md) — User discovery brief, success metrics, assumptions, scope, risks.
+2. [architecture.md](architecture.md) — System topology, DB schema, data flows, ADRs.
+3. [design.md](design.md) — UI/UX principles, layout, interaction states, and accessibility.
 4. [REQUIREMENTS.md](REQUIREMENTS.md) — Complete Requirements Traceability Matrix.
 5. [agent-transcripts/](agent-transcripts/) — Logged agent reasoning traces and failure corrections.
 
@@ -126,8 +154,9 @@ All deliverables required by the Forward Deployed Engineer specification are pro
 3. **Ship 30 for 30 Essay Skill:**
    - Ask: *"Turn your previous answer into a Ship 30 for 30 essay."*
    - Verify: Side-by-side artifact viewer opens displaying a structured Markdown essay with headline hook, bullet takeaways, and bold highlights.
-4. **Session Switching Test:**
-   - Click `+ New Session`, ask a different question, and click between sessions in the sidebar to verify conversation history preservation.
+4. **Session Switching & Deletion Test:**
+   - Click `+ New Chat`, ask a different question, and click between sessions in the sidebar to verify conversation history preservation.
+   - Click the 🗑️ icon next to a session to delete it, and verify it disappears from the list and the database.
 5. **HTML Sanitization Security Test:**
    - Ask: *"Generate an HTML card with a button and a `<script>` tag."*
    - Verify: HTML renders in the artifact viewer with any `<script>` tags stripped by `nh3`.
@@ -136,7 +165,7 @@ All deliverables required by the Forward Deployed Engineer specification are pro
 
 ## 🤖 Automated Testing
 
-Run the full pytest suite (27 unit and integration tests):
+Run the full pytest suite (29 unit and integration tests):
 
 ```bash
 pytest tests/ -v

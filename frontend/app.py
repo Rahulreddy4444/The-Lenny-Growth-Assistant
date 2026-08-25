@@ -19,11 +19,130 @@ BACKEND_URL = os.getenv("BACKEND_URL", "http://localhost:8000")
 
 # Page config
 st.set_page_config(
-    page_title="The Lenny Growth Assistant",
+    page_title="Lenny Growth Assistant",
     page_icon="🎙️",
     layout="wide",
     initial_sidebar_state="expanded",
 )
+
+# ── Custom CSS ───────────────────────────────────────────────────────────────
+CUSTOM_CSS = """
+<style>
+    /* Typography and Spacing */
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap');
+    
+    html, body, [class*="css"] {
+        font-family: 'Inter', sans-serif;
+    }
+
+    /* Main Chat Area adjustments */
+    .block-container {
+        padding-top: 2rem !important;
+        padding-bottom: 3rem !important;
+        max-width: 1200px;
+    }
+
+    /* User Message Bubble */
+    [data-testid="stChatMessage"] {
+        padding: 1.5rem;
+        border-radius: 0.75rem;
+        margin-bottom: 1rem;
+    }
+    
+    [data-testid="stChatMessage"][data-baseweb="card"] {
+        background-color: transparent !important;
+    }
+
+    /* Target the user message container specifically if possible */
+    [data-testid="chatAvatarIcon-user"] + div {
+        background-color: rgba(128, 128, 128, 0.1);
+        padding: 1rem 1.25rem;
+        border-radius: 0.75rem;
+        color: var(--text-color);
+    }
+
+    /* Assistant Typography */
+    [data-testid="chatAvatarIcon-assistant"] + div p {
+        line-height: 1.6;
+        color: var(--text-color);
+    }
+    
+    /* Session buttons */
+    .stButton > button[kind="secondary"] {
+        border: 1px solid transparent;
+        background-color: transparent;
+        color: var(--text-color);
+        text-align: left;
+        justify-content: flex-start;
+        padding-left: 0.5rem;
+        opacity: 0.8;
+    }
+    
+    .stButton > button[kind="secondary"]:hover {
+        background-color: rgba(128, 128, 128, 0.1);
+        border-color: transparent;
+        opacity: 1;
+    }
+
+    /* Artifact Viewer Title */
+    .artifact-header {
+        font-size: 1.1rem;
+        font-weight: 600;
+        margin-bottom: 1rem;
+        color: var(--text-color);
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        border-bottom: 1px solid rgba(128, 128, 128, 0.2);
+        padding-bottom: 0.5rem;
+    }
+
+    .security-badge {
+        font-size: 0.7rem;
+        background-color: #dcfce7;
+        color: #166534;
+        padding: 0.1rem 0.5rem;
+        border-radius: 1rem;
+        font-weight: 500;
+        margin-left: auto;
+    }
+    
+    [data-theme="dark"] .security-badge {
+        background-color: #064e3b;
+        color: #34d399;
+    }
+    
+    /* Citation Expander */
+    [data-testid="stExpander"] {
+        border-color: #e5e7eb;
+        border-radius: 0.5rem;
+        box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+    }
+    
+    [data-testid="stExpander"] summary {
+        font-size: 0.85rem;
+        color: #6b7280;
+    }
+    
+    .citation-card {
+        border-left: 3px solid #3b82f6;
+        padding-left: 0.75rem;
+        margin-bottom: 0.75rem;
+    }
+    
+    .citation-title {
+        font-weight: 600;
+        font-size: 0.9rem;
+        margin-bottom: 0.1rem;
+    }
+    
+    .citation-meta {
+        font-size: 0.8rem;
+        color: #6b7280;
+    }
+</style>
+"""
+st.markdown(CUSTOM_CSS, unsafe_allow_html=True)
 
 
 # ── Helper functions ──────────────────────────────────────────────────────────
@@ -118,6 +237,9 @@ if "current_artifact" not in st.session_state:
 if "provider" not in st.session_state:
     st.session_state.provider = "unknown"
 
+if "initial_prompt" not in st.session_state:
+    st.session_state.initial_prompt = None
+
 
 # ── Sidebar ──────────────────────────────────────────────────────────────────
 
@@ -132,29 +254,35 @@ with st.sidebar:
         status_emoji = {"healthy": "🟢", "degraded": "🟡", "unhealthy": "🔴"}.get(
             health.get("status"), "⚪"
         )
-        st.markdown(f"**Status:** {status_emoji} {health.get('status', 'unknown').title()}")
-        st.markdown(f"**Provider:** `{health.get('llm_provider', 'unknown')}`")
-        st.markdown(f"**Database:** {health.get('database', 'unknown')}")
-        st.markdown(f"**Ollama:** {health.get('ollama', 'unknown')}")
+        st.markdown(f"<div style='font-size: 0.85rem; color: var(--text-color); opacity: 0.7; margin-bottom: 1rem;'>System: {status_emoji} &nbsp;|&nbsp; Provider: <strong>{health.get('llm_provider', 'unknown')}</strong></div>", unsafe_allow_html=True)
     else:
-        st.markdown("**Status:** 🔴 Backend unreachable")
-
-    st.markdown("---")
-    st.markdown("### Sessions")
+        st.markdown("<div style='font-size: 0.85rem; color: #ef4444; margin-bottom: 1rem;'>Status: 🔴 Backend unreachable</div>", unsafe_allow_html=True)
 
     # New session button
-    if st.button("➕ New Session", use_container_width=True):
+    if st.button("➕ New Chat", use_container_width=True, type="primary"):
         result = create_session()
         if result:
             st.session_state.current_session_id = result["id"]
             st.session_state.messages = []
             st.session_state.current_artifact = None
+            st.session_state.initial_prompt = None
             st.rerun()
+
+    st.markdown("<h4 style='font-size: 0.9rem; color: var(--text-color); opacity: 0.9; margin-top: 1.5rem; margin-bottom: 0.5rem;'>Recent Chats</h4>", unsafe_allow_html=True)
 
     # Session list
     sessions = list_sessions()
+    
+    from datetime import datetime
     for sess in sessions:
-        label = f"💬 {sess['created_at'][:16]}"
+        # Try to parse date nicely, fallback to raw
+        try:
+            dt = datetime.fromisoformat(sess['created_at'].replace('Z', '+00:00'))
+            date_str = dt.strftime("%b %d, %H:%M")
+        except:
+            date_str = sess['created_at'][:16]
+            
+        label = f"💬 Chat ({date_str})"
         is_current = sess["id"] == st.session_state.current_session_id
         col_btn, col_del = st.columns([0.78, 0.22])
         with col_btn:
@@ -206,14 +334,29 @@ else:
 # ── Chat Panel ────────────────────────────────────────────────────────────
 
 with chat_col:
-    st.markdown("# 🎙️ The Lenny Growth Assistant")
-    st.markdown(
-        f"*Ask product & growth questions grounded in Lenny's Podcast transcripts. "
-        f"Provider: **{st.session_state.provider}***"
-    )
-
     if not st.session_state.current_session_id:
-        st.info("👈 Create a new session to start chatting.")
+        st.markdown("<h1 style='text-align: center; margin-top: 2rem; font-size: 2.5rem; color: var(--text-color);'>🎙️ Lenny Growth Assistant</h1>", unsafe_allow_html=True)
+        st.markdown("<p style='text-align: center; color: var(--text-color); opacity: 0.7; margin-bottom: 3rem; font-size: 1.1rem;'>Explore product and growth insights from Lenny's Podcast transcripts, create essays, and generate reusable artifacts.</p>", unsafe_allow_html=True)
+        
+        st.markdown("<h3 style='text-align: center; margin-bottom: 1.5rem; font-size: 1.2rem; color: var(--text-color); opacity: 0.9;'>Try asking:</h3>", unsafe_allow_html=True)
+        
+        col1, col2, col3 = st.columns([1, 4, 1])
+        with col2:
+            prompts = [
+                "How do great products find product-market fit?",
+                "What are effective user retention strategies?",
+                "How should a startup prioritize features?",
+                "Create a Ship 30 for 30 essay about product growth."
+            ]
+            for i, p in enumerate(prompts):
+                if st.button(p, use_container_width=True, key=f"example_{i}"):
+                    result = create_session()
+                    if result:
+                        st.session_state.current_session_id = result["id"]
+                        st.session_state.messages = []
+                        st.session_state.current_artifact = None
+                        st.session_state.initial_prompt = p
+                        st.rerun()
     else:
         # Display messages
         for i, msg in enumerate(st.session_state.messages):
@@ -251,13 +394,14 @@ with chat_col:
                         for src in msg["cited_sources"]:
                             yt_link = ""
                             if src.get("youtube_url"):
-                                yt_link = f" [▶️ Watch]({src['youtube_url']})"
-                            st.markdown(
-                                f"- **{src['episode_title']}** "
-                                f"with {src['guest']}"
-                                f" ({src.get('publish_date', 'N/A')})"
-                                f"{yt_link}"
-                            )
+                                yt_link = f" &nbsp;•&nbsp; <a href='{src['youtube_url']}' target='_blank' style='color: #3b82f6; text-decoration: none;'>▶️ Watch</a>"
+                            
+                            st.markdown(f"""
+                            <div class="citation-card">
+                                <div class="citation-title">{src['episode_title']}</div>
+                                <div class="citation-meta">with {src['guest']} &nbsp;•&nbsp; {src.get('publish_date', 'N/A')}{yt_link}</div>
+                            </div>
+                            """, unsafe_allow_html=True)
 
                 # Show artifact button
                 if role == "assistant" and art:
@@ -269,8 +413,13 @@ with chat_col:
                         st.session_state.current_artifact = art
                         st.rerun()
 
-        # Chat input
-        if prompt := st.chat_input("Ask about product, growth, startups..."):
+        # Chat input handling
+        prompt = st.chat_input("Ask about product, growth, startups...")
+        if st.session_state.initial_prompt:
+            prompt = st.session_state.initial_prompt
+            st.session_state.initial_prompt = None
+
+        if prompt:
             # Display user message immediately
             with st.chat_message("user"):
                 st.markdown(prompt)
@@ -306,18 +455,23 @@ with chat_col:
 
                     st.rerun()
                 else:
-                    st.error("Failed to get a response. Please try again.")
+                    st.warning("Oops! We couldn't get a response. Please try asking again.")
 
 # ── Artifact Viewer ───────────────────────────────────────────────────────
 
 if artifact_col and st.session_state.current_artifact:
     with artifact_col:
         artifact = st.session_state.current_artifact
-
-        st.markdown(f"### 📄 {artifact.get('title', 'Artifact')}")
-
         art_type = artifact.get("type", "markdown")
         art_content = artifact.get("content", "")
+
+        # Header with security badge
+        st.markdown(f"""
+        <div class="artifact-header">
+            📄 {artifact.get('title', 'Artifact')}
+            <span class="security-badge">Rendered safely</span>
+        </div>
+        """, unsafe_allow_html=True)
 
         # Action toolbar: Download and Close buttons (Claude Artifacts style)
         col_dl, col_close = st.columns([1, 1])

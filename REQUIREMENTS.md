@@ -8,7 +8,7 @@
 | Ship 30 for 30 essay generation | Essay skill as agent tool | backend/app/services/essay.py | Manual test | Done |
 | Markdown artifact rendering | st.markdown in artifact viewer | frontend/app.py | Manual test | Done |
 | HTML artifact rendering (sanitized) | nh3 + st.components.v1.html | frontend/app.py | XSS test payload | Done |
-| Session management (create/list) | Sessions API + sidebar | backend/app/routers/sessions.py, frontend/app.py | test_sessions.py | Done |
+| Session management (create/list/delete) | Sessions API + sidebar | backend/app/routers/sessions.py, frontend/app.py | test_sessions.py | Done |
 | Message persistence | Messages table + session history | backend/app/db/models.py | test_sessions.py | Done |
 | Provider swap (anthropic/ollama) | LLM_PROVIDER config + adapter | backend/app/services/llm.py, config.py | test_provider.py | Done |
 | Provider shown in UI | Sidebar display | frontend/app.py | Manual test | Done |

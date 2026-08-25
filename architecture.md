@@ -1,7 +1,5 @@
 # Architecture Document — The Lenny Growth Assistant
 
-> Note: Detailed version maintained in [docs/architecture.md](docs/architecture.md).
-
 ## System Architecture
 
 ```
