@@ -428,7 +428,7 @@ class HFEmbeddingService:
             text = [text]
         
         # nomic-embed-text recommends the 'search_query: ' prefix for queries
-        prefixed_text = [f"search_query: {t}" for t]
+        prefixed_text = [f"search_query: {t}" for t in text]
         
         headers = {"Authorization": f"Bearer {self.token}"}
         payload = {"inputs": prefixed_text}
