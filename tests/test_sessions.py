@@ -64,6 +64,11 @@ class TestSessionModels:
         assert detail.messages[0].role == "user"
         assert detail.messages[1].role == "assistant"
 
+    def test_session_delete_endpoint_defined(self):
+        from backend.app.routers.sessions import delete_session
+        import inspect
+        assert inspect.iscoroutinefunction(delete_session)
+
 
 class TestHTMLSanitization:
     """Test HTML sanitization — critical security verification."""

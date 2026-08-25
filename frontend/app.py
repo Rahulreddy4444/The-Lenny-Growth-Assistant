@@ -66,6 +66,11 @@ def get_session(session_id: str) -> dict | None:
     return api_call("get", f"/sessions/{session_id}")
 
 
+def delete_session(session_id: str) -> bool:
+    """Delete a chat session."""
+    return api_call("delete", f"/sessions/{session_id}") is not None
+
+
 def send_message(session_id: str, message: str) -> dict | None:
     """Send a chat message."""
     return api_call("post", "/chat", json={
@@ -151,25 +156,35 @@ with st.sidebar:
     for sess in sessions:
         label = f"💬 {sess['created_at'][:16]}"
         is_current = sess["id"] == st.session_state.current_session_id
-        if st.button(
-            label,
-            key=f"sess_{sess['id']}",
-            use_container_width=True,
-            type="primary" if is_current else "secondary",
-        ):
-            st.session_state.current_session_id = sess["id"]
-            # Load messages
-            detail = get_session(sess["id"])
-            if detail:
-                st.session_state.messages = detail.get("messages", [])
-                # Check for any artifact in last message
-                if st.session_state.messages:
-                    last = st.session_state.messages[-1]
-                    if last.get("artifact"):
-                        st.session_state.current_artifact = last["artifact"]
-                    else:
-                        st.session_state.current_artifact = None
-            st.rerun()
+        col_btn, col_del = st.columns([0.78, 0.22])
+        with col_btn:
+            if st.button(
+                label,
+                key=f"sess_{sess['id']}",
+                use_container_width=True,
+                type="primary" if is_current else "secondary",
+            ):
+                st.session_state.current_session_id = sess["id"]
+                # Load messages
+                detail = get_session(sess["id"])
+                if detail:
+                    st.session_state.messages = detail.get("messages", [])
+                    # Check for any artifact in last message
+                    if st.session_state.messages:
+                        last = st.session_state.messages[-1]
+                        if last.get("artifact"):
+                            st.session_state.current_artifact = last["artifact"]
+                        else:
+                            st.session_state.current_artifact = None
+                st.rerun()
+        with col_del:
+            if st.button("🗑️", key=f"del_{sess['id']}", help="Delete this session", use_container_width=True):
+                delete_session(sess["id"])
+                if st.session_state.current_session_id == sess["id"]:
+                    st.session_state.current_session_id = None
+                    st.session_state.messages = []
+                    st.session_state.current_artifact = None
+                st.rerun()
 
     st.markdown("---")
     st.markdown(

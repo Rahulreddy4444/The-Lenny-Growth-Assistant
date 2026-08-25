@@ -24,7 +24,12 @@ class Session(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     metadata_ = Column("metadata", JSONB, default=dict)
 
-    messages = relationship("Message", back_populates="session", order_by="Message.created_at")
+    messages = relationship(
+        "Message",
+        back_populates="session",
+        cascade="all, delete-orphan",
+        order_by="Message.created_at",
+    )
 
 
 class Message(Base):

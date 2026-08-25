@@ -96,3 +96,23 @@ async def get_session(session_id: str, db: AsyncSession = Depends(get_db)):
         metadata=session.metadata_ or {},
         messages=[_message_to_response(m) for m in session.messages],
     )
+
+
+@router.delete(
+    "/{session_id}",
+    status_code=200,
+    responses={404: {"model": ErrorResponse}},
+)
+async def delete_session(session_id: str, db: AsyncSession = Depends(get_db)):
+    """Delete a chat session and all its messages."""
+    result = await db.execute(
+        select(Session).where(Session.id == session_id)
+    )
+    session = result.scalar_one_or_none()
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    await db.delete(session)
+    await db.commit()
+    logger.info(f"Deleted session: {session_id}")
+    return {"status": "deleted", "id": session_id}
