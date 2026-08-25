@@ -7,7 +7,7 @@ from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.db.models import TranscriptChunk
-from backend.app.services.llm import FastEmbedService
+from backend.app.services.llm import EmbeddingService
 
 logger = logging.getLogger(__name__)
 
@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 async def search_transcripts(
     query: str,
     db: AsyncSession,
-    embedding_service: FastEmbedService,
+    embedding_service: EmbeddingService,
     top_k: int = 5,
 ) -> list[dict]:
     """

@@ -405,20 +405,15 @@ class GroqProvider(LLMProvider):
         )
 
 
-class FastEmbedService:
-    """Standalone embedding service using fastembed (no Ollama required)."""
-    
-    def __init__(self, embed_model: str = "nomic-ai/nomic-embed-text-v1.5"):
-        from fastembed import TextEmbedding
-        logger.info(f"Initializing FastEmbed with model: {embed_model}")
-        self.model = TextEmbedding(model_name=embed_model)
+class EmbeddingService:
+    """Standalone embedding service — always uses Ollama regardless of chat provider."""
+
+    def __init__(self, base_url: str, embed_model: str):
+        self._ollama = OllamaProvider(base_url=base_url, embed_model=embed_model)
 
     async def embed(self, text: str | list[str]) -> list[list[float]]:
-        if isinstance(text, str):
-            text = [text]
-        # fastembed returns a generator of numpy arrays, convert to list of list of floats
-        embeddings = list(self.model.embed(text))
-        return [emb.tolist() for emb in embeddings]
+        return await self._ollama.embed(text)
+
 
 def get_chat_provider(settings) -> LLMProvider:
     """Factory function — returns the configured chat LLM provider."""
@@ -450,7 +445,9 @@ def get_chat_provider(settings) -> LLMProvider:
         raise ValueError(f"Unknown LLM provider: {settings.llm_provider}")
 
 
-def get_embedding_service(settings):
-    """Factory function — returns the embedding service (always FastEmbed)."""
-    # Force use of fastembed so it works in the cloud without Ollama!
-    return FastEmbedService(embed_model="nomic-ai/nomic-embed-text-v1.5")
+def get_embedding_service(settings) -> EmbeddingService:
+    """Factory function — returns the embedding service (always Ollama)."""
+    return EmbeddingService(
+        base_url=settings.ollama_base_url,
+        embed_model=settings.ollama_embed_model,
+    )
