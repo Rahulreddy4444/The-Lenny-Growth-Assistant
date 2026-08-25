@@ -260,10 +260,13 @@ class GroqProvider(LLMProvider):
             all_messages.append({"role": "system", "content": system_prompt})
         all_messages.extend(messages)
 
+        # Dynamic token allocation: Tool calling only needs ~500 tokens, Synthesis gets 2200
+        alloc_tokens = 500 if tools else 2200
+
         payload = {
             "model": self.model,
             "messages": all_messages,
-            "max_tokens": 3500,
+            "max_tokens": alloc_tokens,
             "temperature": 0.3,
         }
 
@@ -287,19 +290,31 @@ class GroqProvider(LLMProvider):
             "Content-Type": "application/json"
         }
 
-        max_retries = 8
+        max_retries = 4
         data = None
 
         for attempt in range(max_retries):
             try:
-                async with httpx.AsyncClient(timeout=120) as client:
+                async with httpx.AsyncClient(timeout=45) as client:
                     resp = await client.post(
                         f"{self.base_url}/chat/completions",
                         json=payload,
                         headers=headers
                     )
                     if resp.status_code == 429:
-                        # Rate limit reached — determine retry delay from headers or body
+                        err_json = {}
+                        try:
+                            err_json = resp.json()
+                        except Exception:
+                            pass
+                        msg = err_json.get("error", {}).get("message", "")
+
+                        # If daily token limit reached (TPD), fail fast rather than hanging the user
+                        if "tokens per day" in msg.lower() or "tpd" in msg.lower():
+                            logger.error(f"Groq daily limit reached: {msg}")
+                            raise RuntimeError(f"Groq Daily Quota Limit Reached (200k tokens/day). {msg}")
+
+                        # Short rate limit — retry
                         retry_after = 5.0 * (attempt + 1)
                         if "retry-after" in resp.headers:
                             try:
@@ -307,23 +322,12 @@ class GroqProvider(LLMProvider):
                             except ValueError:
                                 pass
                         else:
-                            try:
-                                err_json = resp.json()
-                                msg = err_json.get("error", {}).get("message", "")
-                                import re
-                                match = re.search(r"try again in (\d+\.?\d*)s", msg)
-                                if match:
-                                    retry_after = float(match.group(1)) + 1.5
-                            except Exception:
-                                pass
+                            import re
+                            match = re.search(r"try again in (\d+\.?\d*)s", msg)
+                            if match:
+                                retry_after = float(match.group(1)) + 1.5
 
-                        # Cap retry wait to max 30 seconds
-                        retry_after = min(retry_after, 30.0)
-
-                        # Reduce max_tokens dynamically to fit under rate limits on retry
-                        if "max_tokens" in payload and payload["max_tokens"] > 600:
-                            payload["max_tokens"] = int(payload["max_tokens"] * 0.75)
-
+                        retry_after = min(retry_after, 20.0)
                         logger.warning(f"Groq 429 Rate Limit (attempt {attempt+1}/{max_retries}). Retrying in {retry_after:.1f}s...")
                         await asyncio.sleep(retry_after)
                         continue
@@ -337,7 +341,9 @@ class GroqProvider(LLMProvider):
                 if attempt == max_retries - 1:
                     logger.error(f"Groq API HTTP error after {max_retries} attempts: {e}")
                     raise
-                await asyncio.sleep(4.0)
+                await asyncio.sleep(3.0)
+            except RuntimeError:
+                raise
             except Exception as e:
                 if attempt == max_retries - 1:
                     logger.error(f"Groq API connection error after {max_retries} attempts: {e}")
