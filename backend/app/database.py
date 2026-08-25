@@ -8,6 +8,8 @@ from sqlalchemy.orm import DeclarativeBase
 from backend.app.config import get_settings
 
 
+from sqlalchemy.pool import NullPool
+
 class Base(DeclarativeBase):
     pass
 
@@ -17,8 +19,7 @@ settings = get_settings()
 engine = create_async_engine(
     settings.database_url,
     echo=settings.log_level == "DEBUG",
-    pool_size=5,
-    max_overflow=10,
+    poolclass=NullPool,
     connect_args={
         "statement_cache_size": 0,
         "prepared_statement_cache_size": 0,

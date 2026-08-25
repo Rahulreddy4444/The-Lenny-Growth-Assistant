@@ -508,14 +508,35 @@ def get_chat_provider(settings) -> LLMProvider:
         raise ValueError(f"Unknown LLM provider: {settings.llm_provider}")
 
 
+class FastEmbedService:
+    """Fast, in-memory local ONNX embedding service — 100% self-contained."""
+
+    def __init__(self, model_name: str = "nomic-ai/nomic-embed-text-v1.5"):
+        from fastembed import TextEmbedding
+        self.model = TextEmbedding(model_name=model_name)
+        logger.info(f"Initialized FastEmbedService for model {model_name}")
+
+    async def embed(self, text: str | list[str]) -> list[list[float]]:
+        if isinstance(text, str):
+            text = [text]
+        prefixed = [f"search_query: {t}" for t in text]
+        embeddings = list(self.model.embed(prefixed))
+        return [e.tolist() for e in embeddings]
+
+
 def get_embedding_service(settings):
     """Factory function — returns the embedding service."""
-    if settings.hf_token:
-        logger.info("HF_TOKEN found: using HF Inference API for embeddings.")
-        return HFEmbeddingService(token=settings.hf_token)
-    else:
-        logger.info("No HF_TOKEN found: falling back to Ollama for embeddings.")
-        return EmbeddingService(
-            base_url=settings.ollama_base_url,
-            embed_model=settings.ollama_embed_model,
-        )
+    # FastEmbed is self-contained, fast, and needs no external tunnels or APIs
+    try:
+        return FastEmbedService()
+    except Exception as e:
+        logger.warning(f"FastEmbed initialization failed: {e}. Trying fallback.")
+        if settings.hf_token:
+            logger.info("Using HF Inference API for embeddings.")
+            return HFEmbeddingService(token=settings.hf_token)
+        else:
+            logger.info("Falling back to Ollama for embeddings.")
+            return EmbeddingService(
+                base_url=settings.ollama_base_url,
+                embed_model=settings.ollama_embed_model,
+            )
