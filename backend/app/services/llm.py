@@ -415,6 +415,44 @@ class EmbeddingService:
         return await self._ollama.embed(text)
 
 
+class HFEmbeddingService:
+    """Standalone embedding service using Hugging Face Inference API."""
+
+    def __init__(self, token: str, model_id: str = "nomic-ai/nomic-embed-text-v1.5"):
+        self.token = token
+        self.url = f"https://api-inference.huggingface.co/pipeline/feature-extraction/{model_id}"
+        logger.info(f"Initialized HFEmbeddingService for model {model_id}")
+
+    async def embed(self, text: str | list[str]) -> list[list[float]]:
+        if isinstance(text, str):
+            text = [text]
+        
+        # nomic-embed-text recommends the 'search_query: ' prefix for queries
+        prefixed_text = [f"search_query: {t}" for t]
+        
+        headers = {"Authorization": f"Bearer {self.token}"}
+        payload = {"inputs": prefixed_text}
+        
+        try:
+            async with httpx.AsyncClient(timeout=60) as client:
+                resp = await client.post(self.url, headers=headers, json=payload)
+                resp.raise_for_status()
+                data = resp.json()
+                
+                # HF Inference API for feature-extraction usually returns a list of lists (if multiple inputs)
+                # or a list of floats (if single input)
+                if isinstance(data, list):
+                    if len(data) > 0 and isinstance(data[0], float):
+                        return [data]  # Wrap single vector in list
+                    elif len(data) > 0 and isinstance(data[0], list):
+                        return data
+                
+                raise ValueError(f"Unexpected response format from HF API: {type(data)}")
+        except Exception as e:
+            logger.error(f"HF Inference API error: {e}")
+            raise
+
+
 def get_chat_provider(settings) -> LLMProvider:
     """Factory function — returns the configured chat LLM provider."""
     if settings.llm_provider == "anthropic":
@@ -445,9 +483,14 @@ def get_chat_provider(settings) -> LLMProvider:
         raise ValueError(f"Unknown LLM provider: {settings.llm_provider}")
 
 
-def get_embedding_service(settings) -> EmbeddingService:
-    """Factory function — returns the embedding service (always Ollama)."""
-    return EmbeddingService(
-        base_url=settings.ollama_base_url,
-        embed_model=settings.ollama_embed_model,
-    )
+def get_embedding_service(settings):
+    """Factory function — returns the embedding service."""
+    if settings.hf_token:
+        logger.info("HF_TOKEN found: using HF Inference API for embeddings.")
+        return HFEmbeddingService(token=settings.hf_token)
+    else:
+        logger.info("No HF_TOKEN found: falling back to Ollama for embeddings.")
+        return EmbeddingService(
+            base_url=settings.ollama_base_url,
+            embed_model=settings.ollama_embed_model,
+        )
