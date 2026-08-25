@@ -370,6 +370,24 @@ class GroqProvider(LLMProvider):
                     "input": arguments,
                 })
 
+        # Fallback: Parse raw XML tool calls from content if native tool_calls are missing
+        if not tool_calls and content:
+            import re
+            tool_blocks = re.findall(r'<tool_call>(.*?)</tool_call>', content, re.DOTALL | re.IGNORECASE)
+            for block in tool_blocks:
+                fn_match = re.search(r'<function=([^>]+)>', block)
+                if fn_match:
+                    name = fn_match.group(1).strip()
+                    params = {}
+                    param_matches = re.finditer(r'<parameter=([^>]+)>(.*?)</parameter>', block, re.DOTALL)
+                    for p in param_matches:
+                        params[p.group(1).strip()] = p.group(2).strip()
+                    tool_calls.append({
+                        "id": f"call_{len(tool_calls)}",
+                        "name": name,
+                        "input": params
+                    })
+
         stop_reason = data.get("choices", [{}])[0].get("finish_reason", "end_turn")
         
         return LLMResponse(
