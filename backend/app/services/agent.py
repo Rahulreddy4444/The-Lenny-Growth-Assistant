@@ -187,8 +187,16 @@ class AgentService:
         search_count = 0
 
         for iteration in range(MAX_TOOL_ITERATIONS):
-            # Limit transcript search to 1 execution per turn so the model synthesizes immediately
-            active_tools = self.tools if search_count < 1 else None
+            # Limit transcript searches per turn
+            active_tools = self.tools if search_count < 3 else None
+            
+            if active_tools is None and search_count == 3:
+                # Add a one-time message to warn the model it can't search anymore
+                current_messages.append({
+                    "role": "user",
+                    "content": "System: You have reached the maximum number of searches. You must now synthesize the final answer based on the transcripts you've found so far, or clearly state that the information is not available."
+                })
+                search_count += 1 # Prevent adding this warning multiple times
 
             # Call the LLM
             response = await self.provider.chat(
@@ -271,19 +279,22 @@ class AgentService:
     def _clean_model_text(self, text: str) -> str:
         """Strip <think>...</think> reasoning blocks and raw tool_call tags from model output."""
         import re
-        original_text = text
-        # Strip closed <think>...</think>
-        cleaned = re.sub(r'<think>.*?</think>', '', text, flags=re.DOTALL | re.IGNORECASE)
+        
+        # First strip raw <tool_call> tags completely
+        cleaned = re.sub(r'<tool_call>.*?</tool_call>', '', text, flags=re.DOTALL | re.IGNORECASE)
+        
+        original_without_tools = cleaned
+        
+        # Then strip closed <think>...</think>
+        cleaned = re.sub(r'<think>.*?</think>', '', cleaned, flags=re.DOTALL | re.IGNORECASE)
         # Strip unclosed <think> at the start if any
         if cleaned.strip().startswith('<think>'):
             cleaned = re.sub(r'<think>.*?(?=\n\n|\n[#A-Z<]|$)', '', cleaned, flags=re.DOTALL | re.IGNORECASE)
-        # Strip raw <tool_call> tags if printed as plain text
-        cleaned = re.sub(r'<tool_call>.*?</tool_call>', '', cleaned, flags=re.DOTALL | re.IGNORECASE)
         
         result = cleaned.strip()
-        if not result and original_text.strip():
+        if not result and original_without_tools.strip():
             # If the model put its ENTIRE response inside the <think> block, return the inner text
-            result = re.sub(r'</?think>', '', original_text, flags=re.IGNORECASE).strip()
+            result = re.sub(r'</?think>', '', original_without_tools, flags=re.IGNORECASE).strip()
             
         return result
 

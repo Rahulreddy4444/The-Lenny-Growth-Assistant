@@ -370,8 +370,8 @@ class GroqProvider(LLMProvider):
                     "input": arguments,
                 })
 
-        # Fallback: Parse raw XML tool calls from content if native tool_calls are missing
-        if not tool_calls and content:
+        # Fallback: Parse raw XML tool calls from content if native tool_calls are missing AND tools were provided
+        if not tool_calls and content and tools:
             import re
             tool_blocks = re.findall(r'<tool_call>(.*?)</tool_call>', content, re.DOTALL | re.IGNORECASE)
             for block in tool_blocks:
