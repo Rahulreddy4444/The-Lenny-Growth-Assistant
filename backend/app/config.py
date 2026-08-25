@@ -21,7 +21,7 @@ class Settings(BaseSettings):
 
     # Groq
     groq_api_key: Optional[str] = None
-    groq_model: str = "qwen-2.5-32b"
+    groq_model: str = "qwen/qwen3.6-27b"
 
     # Hugging Face API
     hf_token: Optional[str] = None
