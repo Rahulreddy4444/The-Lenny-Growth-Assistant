@@ -27,7 +27,7 @@ services:
     plan: free
     region: ohio
     envVars:
-      - key: API_URL
+      - key: BACKEND_URL
         fromService:
           type: web
           name: lenny-backend
