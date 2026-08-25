@@ -245,21 +245,37 @@ class AgentService:
                         },
                     })
 
-                current_messages.append({
-                    "role": "assistant",
-                    "content": response.content or None,
-                    "tool_calls": formatted_tool_calls,
-                })
+                # Append assistant message
+                if self.settings.llm_provider == "groq":
+                    # For Qwen on Groq, we rely on the raw XML in response.content, no native tool_calls
+                    current_messages.append({
+                        "role": "assistant",
+                        "content": response.content or None,
+                    })
+                else:
+                    current_messages.append({
+                        "role": "assistant",
+                        "content": response.content or None,
+                        "tool_calls": formatted_tool_calls,
+                    })
 
                 for i, tc in enumerate(response.tool_calls):
                     call_id = tc.get("id") or f"call_{i}"
                     tool_result = await self._execute_tool(tc, db)
-                    current_messages.append({
-                        "role": "tool",
-                        "tool_call_id": call_id,
-                        "name": tc["name"],
-                        "content": str(tool_result),
-                    })
+                    
+                    if self.settings.llm_provider == "groq":
+                        # Feed the tool result back as XML in a user message
+                        current_messages.append({
+                            "role": "user",
+                            "content": f"<tool_response>\n<name>{tc['name']}</name>\n<content>{str(tool_result)}</content>\n</tool_response>"
+                        })
+                    else:
+                        current_messages.append({
+                            "role": "tool",
+                            "tool_call_id": call_id,
+                            "name": tc["name"],
+                            "content": str(tool_result),
+                        })
         else:
             # Max iterations reached
             result_text = response.content or "I was unable to complete the analysis within the allowed steps."
