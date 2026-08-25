@@ -17,9 +17,6 @@ httpx>=0.27
 # Agent SDK (primary agent layer — falls back to anthropic SDK if unavailable)
 claude-agent-sdk>=0.1
 
-# FastEmbed for cloud-native embeddings
-fastembed>=0.3.0
-
 # Utilities
 pyyaml>=6.0
 requests>=2.31

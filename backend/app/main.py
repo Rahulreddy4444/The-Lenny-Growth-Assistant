@@ -24,7 +24,7 @@ logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Application lifespan — init DB and pre-warm models on startup."""
+    """Application lifespan — init DB on startup."""
     logger.info("Starting The Lenny Growth Assistant backend...")
     logger.info(f"LLM Provider: {settings.llm_provider}")
     try:
@@ -32,15 +32,6 @@ async def lifespan(app: FastAPI):
         logger.info("Database initialized.")
     except Exception as e:
         logger.error(f"Database init failed (safe to ignore if tables exist): {e}")
-    
-    # Pre-warm embedding service so chat requests don't delay
-    try:
-        from backend.app.services.llm import get_embedding_service
-        get_embedding_service(settings)
-        logger.info("Embedding service pre-warmed successfully.")
-    except Exception as e:
-        logger.warning(f"Embedding service pre-warm failed (will retry on request): {e}")
-
     yield
     logger.info("Shutting down.")
 
