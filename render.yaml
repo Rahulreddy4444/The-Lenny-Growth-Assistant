@@ -1,0 +1,36 @@
+services:
+  # 1. FastAPI Backend Service
+  - type: web
+    name: lenny-backend
+    env: docker
+    dockerfilePath: backend/Dockerfile
+    dockerContext: .
+    plan: free
+    region: ohio
+    healthCheckPath: /health
+    envVars:
+      - key: LLM_PROVIDER
+        value: groq
+      - key: GROQ_API_KEY
+        sync: false # User must input this in the Render dashboard
+      - key: DATABASE_URL
+        sync: false # User must input their Supabase connection string here
+      - key: BACKEND_PORT
+        value: "8000"
+
+  # 2. Streamlit Frontend Service
+  - type: web
+    name: lenny-frontend
+    env: docker
+    dockerfilePath: frontend/Dockerfile
+    dockerContext: .
+    plan: free
+    region: ohio
+    envVars:
+      - key: API_URL
+        fromService:
+          type: web
+          name: lenny-backend
+          envVarKey: RENDER_EXTERNAL_URL
+      - key: STREAMLIT_SERVER_PORT
+        value: "8501"
