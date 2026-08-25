@@ -241,7 +241,7 @@ class OllamaProvider(LLMProvider):
 class GroqProvider(LLMProvider):
     """Groq provider using OpenAI-compatible API for fast inference."""
 
-    def __init__(self, api_key: str, model: str = "llama3-70b-8192"):
+    def __init__(self, api_key: str, model: str = "qwen/qwen3.6-27b"):
         self.api_key = api_key
         self.model = model
         self.base_url = "https://api.groq.com/openai/v1"

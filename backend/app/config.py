@@ -20,8 +20,8 @@ class Settings(BaseSettings):
     anthropic_model: str = "claude-sonnet-4-20250514"
 
     # Groq
-    groq_api_key: Optional[str] = None
-    groq_model: str = "llama3-70b-8192"
+    groq_api_key: str = ""
+    groq_model: str = "qwen/qwen3.6-27b"
 
     # Ollama
     ollama_base_url: str = "http://localhost:11434"
