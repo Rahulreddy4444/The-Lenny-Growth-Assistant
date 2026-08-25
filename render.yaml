@@ -15,6 +15,8 @@ services:
         sync: false # User must input this in the Render dashboard
       - key: DATABASE_URL
         sync: false # User must input their Supabase connection string here
+      - key: PORT
+        value: "8000"
       - key: BACKEND_PORT
         value: "8000"
 
@@ -32,5 +34,7 @@ services:
           type: web
           name: lenny-backend
           envVarKey: RENDER_EXTERNAL_URL
+      - key: PORT
+        value: "8501"
       - key: STREAMLIT_SERVER_PORT
         value: "8501"
