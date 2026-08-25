@@ -27,8 +27,11 @@ async def lifespan(app: FastAPI):
     """Application lifespan — init DB on startup."""
     logger.info("Starting The Lenny Growth Assistant backend...")
     logger.info(f"LLM Provider: {settings.llm_provider}")
-    await init_db()
-    logger.info("Database initialized.")
+    try:
+        await init_db()
+        logger.info("Database initialized.")
+    except Exception as e:
+        logger.error(f"Database init failed (safe to ignore if tables exist): {e}")
     yield
     logger.info("Shutting down.")
 
