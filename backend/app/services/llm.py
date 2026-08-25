@@ -524,11 +524,17 @@ class FastEmbedService:
         return [e.tolist() for e in embeddings]
 
 
+_fastembed_singleton = None
+
 def get_embedding_service(settings):
-    """Factory function — returns the embedding service."""
-    # FastEmbed is self-contained, fast, and needs no external tunnels or APIs
+    """Factory function — returns the embedding service (cached singleton)."""
+    global _fastembed_singleton
+    if _fastembed_singleton is not None:
+        return _fastembed_singleton
+
     try:
-        return FastEmbedService()
+        _fastembed_singleton = FastEmbedService()
+        return _fastembed_singleton
     except Exception as e:
         logger.warning(f"FastEmbed initialization failed: {e}. Trying fallback.")
         if settings.hf_token:
