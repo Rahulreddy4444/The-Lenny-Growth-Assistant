@@ -37,9 +37,18 @@ CUSTOM_CSS = """
 
     /* Main Chat Area adjustments */
     .block-container {
-        padding-top: 2rem !important;
-        padding-bottom: 3rem !important;
-        max-width: 1200px;
+        padding-top: 5.5rem !important;
+        padding-bottom: 5rem !important;
+        max-width: 1400px;
+    }
+
+    header[data-testid="stHeader"] {
+        background-color: transparent !important;
+        pointer-events: none;
+    }
+    
+    header[data-testid="stHeader"] > * {
+        pointer-events: auto;
     }
 
     /* User Message Bubble */

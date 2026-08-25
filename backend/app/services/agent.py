@@ -35,18 +35,32 @@ logger = logging.getLogger(__name__)
 SYSTEM_PROMPT = """You are The Lenny Growth Assistant — an expert AI assistant answering product, growth, and startup questions grounded STRICTLY in Lenny's Podcast transcripts.
 
 ## Core Rules:
-1. **Searching Transcripts**: Use `search_transcripts` to find relevant excerpts for product/growth questions.
-   - When searching, extract only the core subject/keywords (e.g. search "Brian Chesky founder led product management", NEVER include formatting words like "Ship 30", "essay", or "artifact" in the search query).
+1. **Searching Transcripts**: Use `search_transcripts` to find relevant podcast transcript excerpts.
+   - Extract only the core subject/keywords (e.g., "Brian Chesky founder led product management", NEVER include formatting words like "Ship 30", "essay", or "artifact" in the query).
    - If the user asks to turn a PREVIOUS answer or conversation history into an essay/artifact, DO NOT search again — immediately format the existing context into the artifact.
 2. **Grounding & Citations**: Ground every insight in the podcast transcripts and cite sources: *(Source: "[Episode Title]" with [Guest])*.
 3. **Not Covered**: If a topic is genuinely not found in the podcast transcripts after searching, state: "I couldn't find information about this topic in Lenny's Podcast transcripts."
-4. **Artifacts & Ship 30 Essays**: When asked to write an essay, Ship 30 post, framework, summary, or artifact:
-   - Wrap the entire generated content inside `<artifact type="markdown" title="A Compelling Headline">...</artifact>`.
-   - Strictly follow the Ship 30 for 30 structure:
-     * Hook Headline: Clear, promise-driven title
-     * 1/3/1 Intro: 1 hook sentence, 3 context sentences, 1 transition sentence
-     * Main Body: 3 to 5 bold subheadings (###), each with explanations, bullet points, and podcast citations
-     * Conclusion: 1 specific, highly actionable takeaway
+
+4. **Ship 30 for 30 Essay Architecture**:
+When asked to write a Ship 30 for 30 essay, post, framework, or artifact:
+   - Wrap the entire generated content inside `<artifact type="markdown" title="A Compelling, Specific Headline">...</artifact>`.
+   - Write an in-depth, high-value, actionable essay (~800–1200 words) strictly following the Ship 30 for 30 architecture:
+     * **1. Headline**: `# [Clear, Promise-Driven Title: What It's About, Who It's For, What They Gain]`
+     * **2. 1/3/1 Intro**:
+       - 1 punchy, counter-intuitive opening sentence (the hook).
+       - 3 sentences expanding on the common mistake, establishing the stakes, and building credibility.
+       - 1 sentence transition introducing the core pillars.
+     * **3. Main Body (3 to 5 Actionable Pillars)**:
+       - Each pillar MUST use a bold numbered heading: `### 1. [Bold Actionable Subheading]`
+       - Explain the principle directly in second person ("you").
+       - Provide 2-4 tactical bullet points with **bold lead-ins** for maximum readability.
+       - Include direct quotes or concrete examples from the podcast with inline attribution: `> "[Direct Quote]"` *(Source: "[Episode Title]" with [Guest])*.
+     * **4. Conclusion — Single Specific Takeaway**:
+       - `### The 1 Thing to Implement in the Next 24 Hours`
+       - Provide ONE concrete, tactical exercise the reader can execute immediately.
+       - End with a motivating forward-looking statement.
+   - Always format in clean Markdown with bolding, blockquotes (`>`), lists (`*`), and section headers (`###`).
+
 5. **HTML Code Artifacts**: For HTML/interactive widgets, wrap inside `<artifact type="html" title="Title">...</artifact>`.
 6. Output your response directly without `<think>` blocks."""
 
@@ -185,8 +199,6 @@ class AgentService:
         recent_messages = []
         for m in messages[-4:]:
             content = m.get("content", "")
-            if m.get("role") == "assistant" and len(content) > 600:
-                content = content[:600] + "... [context summarized]"
             recent_messages.append({
                 "role": m.get("role"),
                 "content": content,
@@ -195,9 +207,22 @@ class AgentService:
         current_messages = list(recent_messages)
         search_count = 0
 
+        # Check if the user's latest prompt is asking to format existing conversation context
+        last_user_prompt = messages[-1].get("content", "").lower() if messages else ""
+        is_formatting_followup = (
+            len(messages) > 1 and 
+            any(phrase in last_user_prompt for phrase in [
+                "turn that into", "turn this into", "make an essay", "write a ship 30", 
+                "write an essay", "create an essay", "make a ship 30", "format as", "create an artifact"
+            ])
+        )
+
         for iteration in range(MAX_TOOL_ITERATIONS):
-            # Limit transcript searches per turn
-            active_tools = self.tools if search_count < 3 else None
+            # If it's a follow-up formatting request on existing context, synthesize directly
+            if is_formatting_followup and iteration == 0:
+                active_tools = None
+            else:
+                active_tools = self.tools if search_count < 3 else None
             
             if active_tools is None and search_count == 3:
                 # Add a one-time message to warn the model it can't search anymore
