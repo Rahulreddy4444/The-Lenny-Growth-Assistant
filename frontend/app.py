@@ -369,6 +369,8 @@ with chat_col:
             if clean_display_content.strip().startswith('<think>'):
                 clean_display_content = re.sub(r'<think>.*?(?=\n\n|\n[#A-Z<]|$)', '', clean_display_content, flags=re.DOTALL | re.IGNORECASE)
             clean_display_content = clean_display_content.strip()
+            if not clean_display_content and content.strip():
+                clean_display_content = re.sub(r'</?think>', '', content, flags=re.IGNORECASE).strip()
 
             # Fallback artifact detection from content
             art = msg.get("artifact")

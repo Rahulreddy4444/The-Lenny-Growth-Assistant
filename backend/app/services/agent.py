@@ -269,6 +269,7 @@ class AgentService:
     def _clean_model_text(self, text: str) -> str:
         """Strip <think>...</think> reasoning blocks and raw tool_call tags from model output."""
         import re
+        original_text = text
         # Strip closed <think>...</think>
         cleaned = re.sub(r'<think>.*?</think>', '', text, flags=re.DOTALL | re.IGNORECASE)
         # Strip unclosed <think> at the start if any
@@ -276,7 +277,13 @@ class AgentService:
             cleaned = re.sub(r'<think>.*?(?=\n\n|\n[#A-Z<]|$)', '', cleaned, flags=re.DOTALL | re.IGNORECASE)
         # Strip raw <tool_call> tags if printed as plain text
         cleaned = re.sub(r'<tool_call>.*?</tool_call>', '', cleaned, flags=re.DOTALL | re.IGNORECASE)
-        return cleaned.strip()
+        
+        result = cleaned.strip()
+        if not result and original_text.strip():
+            # If the model put its ENTIRE response inside the <think> block, return the inner text
+            result = re.sub(r'</?think>', '', original_text, flags=re.IGNORECASE).strip()
+            
+        return result
 
     async def _execute_tool(self, tool_call: dict, db: AsyncSession) -> str:
         """Execute a tool call and return the result as a string."""
