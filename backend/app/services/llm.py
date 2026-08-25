@@ -441,13 +441,34 @@ class HFEmbeddingService:
                 
                 # HF Inference API for feature-extraction usually returns a list of lists (if multiple inputs)
                 # or a list of floats (if single input)
-                if isinstance(data, list):
-                    if len(data) > 0 and isinstance(data[0], float):
+                # If it's a sequence model without automatic pooling, it returns a 3D array (batch, seq, hidden)
+                if isinstance(data, list) and len(data) > 0:
+                    if isinstance(data[0], float):
                         return [data]  # Wrap single vector in list
-                    elif len(data) > 0 and isinstance(data[0], list):
-                        return data
+                    elif isinstance(data[0], list) and len(data[0]) > 0:
+                        if isinstance(data[0][0], float):
+                            return data  # 2D array (batch of vectors)
+                        elif isinstance(data[0][0], list):
+                            # 3D array! We need to manually mean pool across the sequence
+                            import math
+                            batch_embeddings = []
+                            for seq in data:
+                                seq_len = len(seq)
+                                emb_dim = len(seq[0])
+                                pooled = [0.0] * emb_dim
+                                for token in seq:
+                                    for i in range(emb_dim):
+                                        pooled[i] += token[i]
+                                pooled = [x / seq_len for x in pooled]
+                                
+                                # Nomic requires L2 normalization
+                                norm = math.sqrt(sum(x*x for x in pooled))
+                                if norm > 0:
+                                    pooled = [x / norm for x in pooled]
+                                batch_embeddings.append(pooled)
+                            return batch_embeddings
                 
-                raise ValueError(f"Unexpected response format from HF API: {type(data)}")
+                raise ValueError(f"Unexpected response format from HF API")
         except Exception as e:
             logger.error(f"HF Inference API error: {e}")
             raise
