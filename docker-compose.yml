@@ -64,6 +64,8 @@ services:
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
     ports:
       - "8000:8000"
+    volumes:
+      - ./backend:/app/backend
     depends_on:
       postgres:
         condition: service_healthy
@@ -80,6 +82,8 @@ services:
       BACKEND_URL: http://backend:8000
     ports:
       - "8501:8501"
+    volumes:
+      - ./frontend:/app/frontend
     depends_on:
       - backend
 
