@@ -432,7 +432,10 @@ class AgentService:
                 "content_preview": chunk["content"][:200],
             })
 
-        clean_content = cleaned_text
+        clean_content = cleaned_text.strip()
+        if not clean_content:
+            clean_content = "I couldn't find information about this topic in Lenny's Podcast transcripts."
+            
         if artifact:
             clean_content = (
                 f"📄 **{artifact.get('title', 'Ship 30 for 30 Essay')}** has been generated! "

@@ -420,8 +420,13 @@ class HFEmbeddingService:
 
     def __init__(self, token: str, model_id: str = "nomic-ai/nomic-embed-text-v1.5"):
         self.token = token
-        self.url = f"https://api-inference.huggingface.co/pipeline/feature-extraction/{model_id}"
-        logger.info(f"Initialized HFEmbeddingService for model {model_id}")
+        self.model_id = model_id
+        self.endpoints = [
+            f"https://router.huggingface.co/hf-inference/models/{model_id}",
+            f"https://api-inference.huggingface.co/models/{model_id}",
+            f"https://api-inference.huggingface.co/pipeline/feature-extraction/{model_id}",
+        ]
+        logger.info(f"Initialized HFEmbeddingService with endpoints for model {model_id}")
 
     async def embed(self, text: str | list[str]) -> list[list[float]]:
         if isinstance(text, str):
@@ -429,49 +434,48 @@ class HFEmbeddingService:
         
         # nomic-embed-text recommends the 'search_query: ' prefix for queries
         prefixed_text = [f"search_query: {t}" for t in text]
-        
         headers = {"Authorization": f"Bearer {self.token}"}
         payload = {"inputs": prefixed_text}
         
-        try:
-            async with httpx.AsyncClient(timeout=60) as client:
-                resp = await client.post(self.url, headers=headers, json=payload)
-                resp.raise_for_status()
-                data = resp.json()
+        last_error = None
+        for url in self.endpoints:
+            try:
+                async with httpx.AsyncClient(timeout=60) as client:
+                    resp = await client.post(url, headers=headers, json=payload)
+                    if resp.status_code == 200:
+                        data = resp.json()
+                        if isinstance(data, list) and len(data) > 0:
+                            if isinstance(data[0], float):
+                                return [data]  # Wrap single vector in list
+                            elif isinstance(data[0], list) and len(data[0]) > 0:
+                                if isinstance(data[0][0], float):
+                                    return data  # 2D array (batch of vectors)
+                                elif isinstance(data[0][0], list):
+                                    # 3D array! Manually mean pool across the sequence
+                                    import math
+                                    batch_embeddings = []
+                                    for seq in data:
+                                        seq_len = len(seq)
+                                        emb_dim = len(seq[0])
+                                        pooled = [0.0] * emb_dim
+                                        for token in seq:
+                                            for i in range(emb_dim):
+                                                pooled[i] += token[i]
+                                        pooled = [x / seq_len for x in pooled]
+                                        
+                                        norm = math.sqrt(sum(x*x for x in pooled))
+                                        if norm > 0:
+                                            pooled = [x / norm for x in pooled]
+                                        batch_embeddings.append(pooled)
+                                    return batch_embeddings
+                    else:
+                        logger.warning(f"HF API returned {resp.status_code} from {url}: {resp.text[:200]}")
+            except Exception as e:
+                last_error = e
+                logger.warning(f"HF API connection error on {url}: {e}")
+                continue
                 
-                # HF Inference API for feature-extraction usually returns a list of lists (if multiple inputs)
-                # or a list of floats (if single input)
-                # If it's a sequence model without automatic pooling, it returns a 3D array (batch, seq, hidden)
-                if isinstance(data, list) and len(data) > 0:
-                    if isinstance(data[0], float):
-                        return [data]  # Wrap single vector in list
-                    elif isinstance(data[0], list) and len(data[0]) > 0:
-                        if isinstance(data[0][0], float):
-                            return data  # 2D array (batch of vectors)
-                        elif isinstance(data[0][0], list):
-                            # 3D array! We need to manually mean pool across the sequence
-                            import math
-                            batch_embeddings = []
-                            for seq in data:
-                                seq_len = len(seq)
-                                emb_dim = len(seq[0])
-                                pooled = [0.0] * emb_dim
-                                for token in seq:
-                                    for i in range(emb_dim):
-                                        pooled[i] += token[i]
-                                pooled = [x / seq_len for x in pooled]
-                                
-                                # Nomic requires L2 normalization
-                                norm = math.sqrt(sum(x*x for x in pooled))
-                                if norm > 0:
-                                    pooled = [x / norm for x in pooled]
-                                batch_embeddings.append(pooled)
-                            return batch_embeddings
-                
-                raise ValueError(f"Unexpected response format from HF API")
-        except Exception as e:
-            logger.error(f"HF Inference API error: {e}")
-            raise
+        raise RuntimeError(f"All Hugging Face embedding endpoints failed. Last error: {last_error}")
 
 
 def get_chat_provider(settings) -> LLMProvider:
