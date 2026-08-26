@@ -218,19 +218,11 @@ class AgentService:
         )
 
         for iteration in range(MAX_TOOL_ITERATIONS):
-            # If it's a follow-up formatting request on existing context, synthesize directly
-            if is_formatting_followup and iteration == 0:
+            # If it's a follow-up formatting request or if search already completed, synthesize directly
+            if (is_formatting_followup and iteration == 0) or search_count >= 1:
                 active_tools = None
             else:
-                active_tools = self.tools if search_count < 3 else None
-            
-            if active_tools is None and search_count == 3:
-                # Add a one-time message to warn the model it can't search anymore
-                current_messages.append({
-                    "role": "user",
-                    "content": "System: You have reached the maximum number of searches. You must now synthesize the final answer based on the transcripts you've found so far, or clearly state that the information is not available."
-                })
-                search_count += 1 # Prevent adding this warning multiple times
+                active_tools = self.tools
 
             # Call the LLM
             response = await self.provider.chat(

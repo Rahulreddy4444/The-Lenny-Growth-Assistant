@@ -260,13 +260,11 @@ class GroqProvider(LLMProvider):
             all_messages.append({"role": "system", "content": system_prompt})
         all_messages.extend(messages)
 
-        # Dynamic token allocation: Tool calling only needs ~500 tokens, Synthesis gets 2200
-        alloc_tokens = 500 if tools else 2200
-
+        # Set max_tokens to 3000 to allow full reasoning thinking trace and rich synthesis
         payload = {
             "model": self.model,
             "messages": all_messages,
-            "max_tokens": alloc_tokens,
+            "max_tokens": 3000,
             "temperature": 0.3,
         }
 
