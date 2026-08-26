@@ -6,6 +6,11 @@ Built for the **Forward Deployed Engineer** Take-Home Assessment.
 
 ---
 
+## 📹 Demo Video
+- **Walkthrough Video:** [Watch the Demo Video](https://drive.google.com/file/d/1aiwA5I3sJu-sXC9aoFU2vPfPxI5Iuh7Q/view?usp=drive_link)
+
+---
+
 ## 🌐 Live Cloud Deployment
 - **Live Frontend App:** [https://lenny-frontend.onrender.com](https://lenny-frontend.onrender.com)
 - **Live Backend API:** [https://lenny-backend.onrender.com](https://lenny-backend.onrender.com)
@@ -15,6 +20,7 @@ Built for the **Forward Deployed Engineer** Take-Home Assessment.
 ---
 
 ## 📑 Table of Contents
+- [Demo Video](#-demo-video)
 - [Live Cloud Deployment](#-live-cloud-deployment)
 - [Quick Start](#-quick-start)
 - [Architecture & Tech Stack](#-architecture--tech-stack)
