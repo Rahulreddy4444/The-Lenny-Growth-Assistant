@@ -6,7 +6,16 @@ Built for the **Forward Deployed Engineer** Take-Home Assessment.
 
 ---
 
+## 🌐 Live Cloud Deployment
+- **Live Frontend App:** [https://lenny-frontend.onrender.com](https://lenny-frontend.onrender.com)
+- **Live Backend API:** [https://lenny-backend.onrender.com](https://lenny-backend.onrender.com)
+- **Interactive Swagger Docs:** [https://lenny-backend.onrender.com/docs](https://lenny-backend.onrender.com/docs)
+- **Health Check Endpoint:** [https://lenny-backend.onrender.com/health](https://lenny-backend.onrender.com/health)
+
+---
+
 ## 📑 Table of Contents
+- [Live Cloud Deployment](#-live-cloud-deployment)
 - [Quick Start](#-quick-start)
 - [Architecture & Tech Stack](#-architecture--tech-stack)
 - [Flexible LLM Configuration](#-flexible-llm-configuration)
@@ -22,7 +31,7 @@ Built for the **Forward Deployed Engineer** Take-Home Assessment.
 ### 1. One-Command Docker Startup (Recommended)
 ```bash
 # 1. Clone the repository
-git clone <repo-url>
+git clone https://github.com/Rahulreddy4444/The-Lenny-Growth-Assistant.git
 cd "The Lenny Growth Assistant"
 
 # 2. Configure environment
