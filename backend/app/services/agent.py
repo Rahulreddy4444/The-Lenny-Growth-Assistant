@@ -277,7 +277,17 @@ class AgentService:
                     if is_ollama:
                         args = inp if isinstance(inp, dict) else (json.loads(inp) if inp else {})
                     else:
-                        args = json.dumps(inp) if isinstance(inp, dict) else str(inp or "{}")
+                        if isinstance(inp, dict):
+                            args = json.dumps(inp)
+                        else:
+                            try:
+                                args = json.dumps(json.loads(inp))
+                            except Exception:
+                                import ast
+                                try:
+                                    args = json.dumps(ast.literal_eval(inp))
+                                except Exception:
+                                    args = json.dumps({"query": str(inp)})
                     formatted_tool_calls.append({
                         "id": tc.get("id") or f"call_{i}",
                         "type": "function",
